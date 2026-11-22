@@ -3926,6 +3926,7 @@ dependencies = [
 [[package]]
 name = "muda"
 version = "0.19.1"
+source = "git+https://github.com/richerfu/muda?branch=feat-openharmony#a8ba5892e483784e9b1b7f5114cee1bb0a25938c"
 dependencies = [
  "base64 0.22.1",
  "crossbeam-channel",
@@ -3944,7 +3945,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.12",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7530,6 +7531,7 @@ dependencies = [
 [[package]]
 name = "tao"
 version = "0.35.3"
+source = "git+https://github.com/richerfu/tao?branch=feat-openharmony#896993d53f7249933f7c59b9bd56d5e79e7c78bb"
 dependencies = [
  "bitflags 2.13.2",
  "block2 0.6.2",
@@ -7577,6 +7579,7 @@ dependencies = [
 [[package]]
 name = "tao-macros"
 version = "0.1.3"
+source = "git+https://github.com/richerfu/tao?branch=feat-openharmony#896993d53f7249933f7c59b9bd56d5e79e7c78bb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7614,6 +7617,7 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 [[package]]
 name = "tauri"
 version = "2.10.3"
+source = "git+https://github.com/richerfu/tauri?branch=feat-openharmony#a87d95e7dfe8c5e46afe266d4bb4d9535a3f616a"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -7676,6 +7680,7 @@ dependencies = [
 [[package]]
 name = "tauri-build"
 version = "2.5.6"
+source = "git+https://github.com/richerfu/tauri?branch=feat-openharmony#a87d95e7dfe8c5e46afe266d4bb4d9535a3f616a"
 dependencies = [
  "anyhow",
  "cargo_toml",
@@ -7698,6 +7703,7 @@ dependencies = [
 [[package]]
 name = "tauri-codegen"
 version = "2.5.5"
+source = "git+https://github.com/richerfu/tauri?branch=feat-openharmony#a87d95e7dfe8c5e46afe266d4bb4d9535a3f616a"
 dependencies = [
  "base64 0.22.1",
  "brotli",
@@ -7723,6 +7729,7 @@ dependencies = [
 [[package]]
 name = "tauri-macros"
 version = "2.5.5"
+source = "git+https://github.com/richerfu/tauri?branch=feat-openharmony#a87d95e7dfe8c5e46afe266d4bb4d9535a3f616a"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -7735,6 +7742,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin"
 version = "2.5.4"
+source = "git+https://github.com/richerfu/tauri?branch=feat-openharmony#a87d95e7dfe8c5e46afe266d4bb4d9535a3f616a"
 dependencies = [
  "anyhow",
  "glob",
@@ -8355,6 +8363,7 @@ dependencies = [
 [[package]]
 name = "tauri-runtime"
 version = "2.10.1"
+source = "git+https://github.com/richerfu/tauri?branch=feat-openharmony#a87d95e7dfe8c5e46afe266d4bb4d9535a3f616a"
 dependencies = [
  "cookie",
  "dpi",
@@ -8379,6 +8388,7 @@ dependencies = [
 [[package]]
 name = "tauri-runtime-wry"
 version = "2.10.1"
+source = "git+https://github.com/richerfu/tauri?branch=feat-openharmony#a87d95e7dfe8c5e46afe266d4bb4d9535a3f616a"
 dependencies = [
  "gtk",
  "http",
@@ -8407,6 +8417,7 @@ dependencies = [
 [[package]]
 name = "tauri-utils"
 version = "2.8.3"
+source = "git+https://github.com/richerfu/tauri?branch=feat-openharmony#a87d95e7dfe8c5e46afe266d4bb4d9535a3f616a"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -8436,7 +8447,7 @@ dependencies = [
  "serialize-to-javascript",
  "swift-rs",
  "thiserror 2.0.12",
- "toml 1.1.6+spec-1.1.0",
+ "toml 0.9.12+spec-1.1.0",
  "url",
  "urlpattern 0.3.0",
  "uuid",
@@ -8957,6 +8968,7 @@ dependencies = [
 [[package]]
 name = "tray-icon"
 version = "0.24.0"
+source = "git+https://github.com/richerfu/tray-icon?branch=feat-openharmony#a39fde477279c6ac47b3181aa56195a5be180bc6"
 dependencies = [
  "base64 0.22.1",
  "crossbeam-channel",
@@ -8977,7 +8989,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.12",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -10374,6 +10386,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 [[package]]
 name = "wry"
 version = "0.55.1"
+source = "git+https://github.com/richerfu/wry?branch=feat-openharmony#979b860c981d912b24e959d3e528a8316f33fc9e"
 dependencies = [
  "base64 0.22.1",
  "block2 0.6.2",
@@ -10919,7 +10932,3 @@ dependencies = [
  "syn 2.0.100",
  "winnow 0.7.15",
 ]
-
-[[patch.unused]]
-name = "cargo-mobile2"
-version = "0.22.4"
