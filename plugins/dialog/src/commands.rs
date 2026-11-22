@@ -163,6 +163,9 @@ pub(crate) async fn open<R: Runtime>(
             let tauri_scope = window.state::<tauri::scope::Scopes>();
 
             if options.multiple {
+                #[cfg(target_env = "ohos")]
+                let folders = crate::ohos::pick_folders_async(dialog_builder).await;
+                #[cfg(not(target_env = "ohos"))]
                 let folders = dialog_builder.blocking_pick_folders();
                 if let Some(folders) = &folders {
                     for folder in folders {
@@ -178,6 +181,9 @@ pub(crate) async fn open<R: Runtime>(
                     folders.map(|folders| folders.into_iter().map(|p| p.simplified()).collect()),
                 )
             } else {
+                #[cfg(target_env = "ohos")]
+                let folder = crate::ohos::pick_folder_async(dialog_builder).await;
+                #[cfg(not(target_env = "ohos"))]
                 let folder = dialog_builder.blocking_pick_folder();
                 if let Some(folder) = &folder
                     && let Ok(path) = folder.clone().into_path()
@@ -195,6 +201,9 @@ pub(crate) async fn open<R: Runtime>(
     } else if options.multiple {
         let tauri_scope = window.state::<tauri::scope::Scopes>();
 
+        #[cfg(target_env = "ohos")]
+        let files = crate::ohos::pick_files_async(dialog_builder).await;
+        #[cfg(not(target_env = "ohos"))]
         let files = dialog_builder.blocking_pick_files();
         if let Some(files) = &files {
             for file in files {
@@ -210,6 +219,9 @@ pub(crate) async fn open<R: Runtime>(
         OpenResponse::Files(files.map(|files| files.into_iter().map(|f| f.simplified()).collect()))
     } else {
         let tauri_scope = window.state::<tauri::scope::Scopes>();
+        #[cfg(target_env = "ohos")]
+        let file = crate::ohos::pick_file_async(dialog_builder).await;
+        #[cfg(not(target_env = "ohos"))]
         let file = dialog_builder.blocking_pick_file();
 
         if let Some(file) = &file
@@ -261,6 +273,9 @@ pub(crate) async fn save<R: Runtime>(
 
     let tauri_scope = window.state::<tauri::scope::Scopes>();
 
+    #[cfg(target_env = "ohos")]
+    let path = crate::ohos::save_file_async(dialog_builder).await;
+    #[cfg(not(target_env = "ohos"))]
     let path = dialog_builder.blocking_save_file();
     if let Some(p) = &path
         && let Ok(path) = p.clone().into_path()
@@ -310,5 +325,10 @@ pub(crate) async fn message<R: Runtime>(
         builder = builder.kind(kind);
     }
 
-    Ok(builder.blocking_show_with_result())
+    #[cfg(target_env = "ohos")]
+    let result = crate::ohos::show_message_dialog_async(builder).await;
+    #[cfg(not(target_env = "ohos"))]
+    let result = builder.blocking_show_with_result();
+
+    Ok(result)
 }

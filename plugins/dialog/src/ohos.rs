@@ -81,8 +81,54 @@ impl<R: Runtime> Dialog<R> {
     }
 }
 
+fn percent_decode_path(encoded: &str) -> String {
+    let bytes = encoded.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(hi), Some(lo)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2]))
+        {
+            out.push((hi << 4) | lo);
+            i += 3;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| encoded.to_string())
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
 fn uri_to_file_path(raw: String) -> FilePath {
     if let Ok(url) = url::Url::parse(&raw) {
+        if url.scheme() == "file" {
+            if let Ok(path) = url.to_file_path() {
+                return FilePath::Path(path);
+            }
+            // OpenHarmony DocumentViewPicker returns sandbox-mapped URIs such as
+            // `file://docs/storage/Users/currentUser/...` or `file://<bundle>/data/storage/...`.
+            // Media library URIs (`file://media/...`) are not directly POSIX-accessible.
+            let host = url.host_str().unwrap_or_default();
+            if host != "media" {
+                let decoded = percent_decode_path(url.path());
+                if host == "docs"
+                    || decoded.starts_with("/data/storage/")
+                    || decoded.starts_with("/storage/")
+                {
+                    return FilePath::Path(PathBuf::from(decoded));
+                }
+            }
+        }
         FilePath::Url(url)
     } else {
         FilePath::Path(PathBuf::from(raw))
@@ -180,6 +226,12 @@ async fn run_file_dialog(options: FileDialogOptions) -> Vec<FilePath> {
         log::error!("[dialog] OHOS APP not initialized");
         return Vec::new();
     };
+    log::debug!(
+        "[dialog] show_file_dialog: type={} allow_many={} parent_window_id={:?}",
+        options.dialog_type,
+        options.allow_many,
+        options.parent_window_id,
+    );
     match ohos_app.show_file_dialog(options).await {
         Ok(response) => response.files.into_iter().map(uri_to_file_path).collect(),
         Err(e) => {
@@ -189,14 +241,46 @@ async fn run_file_dialog(options: FileDialogOptions) -> Vec<FilePath> {
     }
 }
 
+pub(crate) async fn pick_file_async<R: Runtime>(dialog: FileDialogBuilder<R>) -> Option<FilePath> {
+    let options = build_file_dialog_options(&dialog, dialog_type::OPEN_FILE, false, true, false);
+    run_file_dialog(options).await.into_iter().next()
+}
+
+pub(crate) async fn pick_files_async<R: Runtime>(
+    dialog: FileDialogBuilder<R>,
+) -> Option<Vec<FilePath>> {
+    let options = build_file_dialog_options(&dialog, dialog_type::OPEN_FILE, true, true, false);
+    let files = run_file_dialog(options).await;
+    if files.is_empty() { None } else { Some(files) }
+}
+
+pub(crate) async fn pick_folder_async<R: Runtime>(
+    dialog: FileDialogBuilder<R>,
+) -> Option<FilePath> {
+    let options =
+        build_file_dialog_options(&dialog, dialog_type::OPEN_FOLDER, false, false, false);
+    run_file_dialog(options).await.into_iter().next()
+}
+
+pub(crate) async fn pick_folders_async<R: Runtime>(
+    dialog: FileDialogBuilder<R>,
+) -> Option<Vec<FilePath>> {
+    let options = build_file_dialog_options(&dialog, dialog_type::OPEN_FOLDER, true, false, false);
+    let files = run_file_dialog(options).await;
+    if files.is_empty() { None } else { Some(files) }
+}
+
+pub(crate) async fn save_file_async<R: Runtime>(dialog: FileDialogBuilder<R>) -> Option<FilePath> {
+    let options = build_file_dialog_options(&dialog, dialog_type::SAVE_FILE, false, true, true);
+    run_file_dialog(options).await.into_iter().next()
+}
+
 pub fn pick_file<R: Runtime, F: FnOnce(Option<FilePath>) + Send + 'static>(
     dialog: FileDialogBuilder<R>,
     f: F,
 ) {
-    let options = build_file_dialog_options(&dialog, dialog_type::OPEN_FILE, false, true, false);
     tauri::async_runtime::spawn(async move {
-        let mut files = run_file_dialog(options).await;
-        f(files.drain(..).next());
+        f(pick_file_async(dialog).await);
     });
 }
 
@@ -204,14 +288,8 @@ pub fn pick_files<R: Runtime, F: FnOnce(Option<Vec<FilePath>>) + Send + 'static>
     dialog: FileDialogBuilder<R>,
     f: F,
 ) {
-    let options = build_file_dialog_options(&dialog, dialog_type::OPEN_FILE, true, true, false);
     tauri::async_runtime::spawn(async move {
-        let files = run_file_dialog(options).await;
-        if files.is_empty() {
-            f(None);
-        } else {
-            f(Some(files));
-        }
+        f(pick_files_async(dialog).await);
     });
 }
 
@@ -219,10 +297,8 @@ pub fn pick_folder<R: Runtime, F: FnOnce(Option<FilePath>) + Send + 'static>(
     dialog: FileDialogBuilder<R>,
     f: F,
 ) {
-    let options = build_file_dialog_options(&dialog, dialog_type::OPEN_FOLDER, false, false, false);
     tauri::async_runtime::spawn(async move {
-        let mut files = run_file_dialog(options).await;
-        f(files.drain(..).next());
+        f(pick_folder_async(dialog).await);
     });
 }
 
@@ -230,14 +306,8 @@ pub fn pick_folders<R: Runtime, F: FnOnce(Option<Vec<FilePath>>) + Send + 'stati
     dialog: FileDialogBuilder<R>,
     f: F,
 ) {
-    let options = build_file_dialog_options(&dialog, dialog_type::OPEN_FOLDER, true, false, false);
     tauri::async_runtime::spawn(async move {
-        let files = run_file_dialog(options).await;
-        if files.is_empty() {
-            f(None);
-        } else {
-            f(Some(files));
-        }
+        f(pick_folders_async(dialog).await);
     });
 }
 
@@ -245,10 +315,8 @@ pub fn save_file<R: Runtime, F: FnOnce(Option<FilePath>) + Send + 'static>(
     dialog: FileDialogBuilder<R>,
     f: F,
 ) {
-    let options = build_file_dialog_options(&dialog, dialog_type::SAVE_FILE, false, true, true);
     tauri::async_runtime::spawn(async move {
-        let mut files = run_file_dialog(options).await;
-        f(files.drain(..).next());
+        f(save_file_async(dialog).await);
     });
 }
 
@@ -367,11 +435,9 @@ fn build_prompt_request(
     }
 }
 
-/// Shows a native modal message dialog via `openharmony-ability-plugin-window`.
-pub fn show_message_dialog<R: Runtime, F: FnOnce(MessageDialogResult) + Send + 'static>(
+pub(crate) async fn show_message_dialog_async<R: Runtime>(
     dialog: MessageDialogBuilder<R>,
-    f: F,
-) {
+) -> MessageDialogResult {
     let window_id = dialog.parent_window_id.unwrap_or(0);
     let mapped = build_prompt_request(
         window_id,
@@ -381,30 +447,37 @@ pub fn show_message_dialog<R: Runtime, F: FnOnce(MessageDialogResult) + Send + '
         &dialog.buttons,
     );
 
-    tauri::async_runtime::spawn(async move {
-        let result = match clone_ohos_app() {
-            Some(ohos_app) => match WindowClient::new(&ohos_app) {
-                Ok(client) => match client.show_prompt(mapped.request).await {
-                    Ok(index) => mapped
-                        .results
-                        .get(index as usize)
-                        .cloned()
-                        .unwrap_or(mapped.fallback),
-                    Err(e) => {
-                        log::warn!("[dialog] message prompt failed or cancelled: {e}");
-                        mapped.fallback
-                    }
-                },
+    match clone_ohos_app() {
+        Some(ohos_app) => match WindowClient::new(&ohos_app) {
+            Ok(client) => match client.show_prompt(mapped.request).await {
+                Ok(index) => mapped
+                    .results
+                    .get(index as usize)
+                    .cloned()
+                    .unwrap_or(mapped.fallback),
                 Err(e) => {
-                    log::error!("[dialog] failed to create WindowClient: {e}");
+                    log::warn!("[dialog] message prompt failed or cancelled: {e}");
                     mapped.fallback
                 }
             },
-            None => {
-                log::error!("[dialog] OHOS APP not initialized");
+            Err(e) => {
+                log::error!("[dialog] failed to create WindowClient: {e}");
                 mapped.fallback
             }
-        };
-        f(result);
+        },
+        None => {
+            log::error!("[dialog] OHOS APP not initialized");
+            mapped.fallback
+        }
+    }
+}
+
+/// Shows a native modal message dialog via `openharmony-ability-plugin-window`.
+pub fn show_message_dialog<R: Runtime, F: FnOnce(MessageDialogResult) + Send + 'static>(
+    dialog: MessageDialogBuilder<R>,
+    f: F,
+) {
+    tauri::async_runtime::spawn(async move {
+        f(show_message_dialog_async(dialog).await);
     });
 }

@@ -92,9 +92,21 @@ macro_rules! blocking_fn {
     ($self:ident, $fn:ident) => {{
         let (tx, rx) = sync_channel(0);
         let cb = move |response| {
-            tx.send(response).unwrap();
+            let _ = tx.send(response);
         };
-        $self.$fn(cb);
+        #[cfg(target_env = "ohos")]
+        {
+            // Spawn onto a non-Tokio thread so the internal `async_runtime::spawn`
+            // goes to Tokio's global queue instead of the calling worker's
+            // non-stealable LIFO slot (which would deadlock on `rx.recv()`).
+            std::thread::spawn(move || {
+                $self.$fn(cb);
+            });
+        }
+        #[cfg(not(target_env = "ohos"))]
+        {
+            $self.$fn(cb);
+        }
         rx.recv().unwrap()
     }};
 }
