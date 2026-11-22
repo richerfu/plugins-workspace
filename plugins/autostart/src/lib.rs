@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-//! Automatically launch your application at startup. Supports Windows, Mac (via AppleScript or Launch Agent), and Linux.
+//! Automatically launch your application at startup. Supports Windows, Mac (via AppleScript or Launch Agent), Linux, and OpenHarmony.
 
 #![doc(
     html_logo_url = "https://github.com/tauri-apps/tauri/raw/dev/app-icon.png",
@@ -10,13 +10,17 @@
 )]
 #![cfg(not(any(target_os = "android", target_os = "ios")))]
 
+#[cfg(not(target_env = "ohos"))]
 use auto_launch::{AutoLaunch, AutoLaunchBuilder};
+#[cfg(target_env = "ohos")]
+use openharmony_ability_plugin_autostart::AutostartClient;
 use serde::{Serialize, ser::Serializer};
 use tauri::{
     Manager, Runtime, State, command,
     plugin::{Builder as PluginBuilder, TauriPlugin},
 };
 
+#[cfg(not(target_env = "ohos"))]
 use std::env::current_exe;
 
 type Result<T> = std::result::Result<T, Error>;
@@ -70,8 +74,10 @@ impl Serialize for Error {
 ///
 /// An instance is created and managed as Tauri state when the plugin is built; access it
 /// through [`ManagerExt::autolaunch`].
+#[cfg(not(target_env = "ohos"))]
 pub struct AutoLaunchManager(AutoLaunch);
 
+#[cfg(not(target_env = "ohos"))]
 impl AutoLaunchManager {
     /// Enables auto start, registering the application to launch at login.
     ///
@@ -112,6 +118,71 @@ impl AutoLaunchManager {
             .map_err(|e| e.to_string())
             .map_err(Error::Anyhow)
     }
+
+    pub(crate) async fn enable_async(&self) -> Result<()> {
+        self.enable()
+    }
+
+    pub(crate) async fn disable_async(&self) -> Result<()> {
+        self.disable()
+    }
+
+    pub(crate) async fn is_enabled_async(&self) -> Result<bool> {
+        self.is_enabled()
+    }
+}
+
+/// Manages the auto start (launch at login) state of the application on OpenHarmony.
+#[cfg(target_env = "ohos")]
+pub struct AutoLaunchManager(AutostartClient);
+
+#[cfg(target_env = "ohos")]
+impl AutoLaunchManager {
+    pub async fn enable(&self) -> Result<()> {
+        self.0
+            .enable()
+            .await
+            .map_err(|e| Error::Anyhow(e.to_string()))
+    }
+
+    pub async fn disable(&self) -> Result<()> {
+        self.0
+            .disable()
+            .await
+            .map_err(|e| Error::Anyhow(e.to_string()))
+    }
+
+    /// Queries whether autostart is enabled for this application.
+    ///
+    /// Requires API 21+ on OpenHarmony (`autoStartupManager.getAutoStartupStatusForSelf()`).
+    /// On lower API levels, returns an error naming the required API level.
+    pub async fn is_enabled(&self) -> Result<bool> {
+        use tauri::ohos::openharmony_ability::version;
+
+        const MIN_AUTOSTART_API_VERSION: i32 = 21;
+        let current = version::sdk_api_version();
+        if current < MIN_AUTOSTART_API_VERSION {
+            return Err(Error::Anyhow(format!(
+                "isEnabled requires API level {MIN_AUTOSTART_API_VERSION}+ on OpenHarmony (current: {current})"
+            )));
+        }
+        self.0
+            .is_enabled()
+            .await
+            .map_err(|e| Error::Anyhow(e.to_string()))
+    }
+
+    pub(crate) async fn enable_async(&self) -> Result<()> {
+        self.enable().await
+    }
+
+    pub(crate) async fn disable_async(&self) -> Result<()> {
+        self.disable().await
+    }
+
+    pub(crate) async fn is_enabled_async(&self) -> Result<bool> {
+        self.is_enabled().await
+    }
 }
 
 /// Extensions to [`tauri::App`], [`tauri::AppHandle`], [`tauri::WebviewWindow`], [`tauri::Webview`]
@@ -130,17 +201,17 @@ impl<R: Runtime, T: Manager<R>> ManagerExt<R> for T {
 
 #[command]
 async fn enable(manager: State<'_, AutoLaunchManager>) -> Result<()> {
-    manager.enable()
+    manager.enable_async().await
 }
 
 #[command]
 async fn disable(manager: State<'_, AutoLaunchManager>) -> Result<()> {
-    manager.disable()
+    manager.disable_async().await
 }
 
 #[command]
 async fn is_enabled(manager: State<'_, AutoLaunchManager>) -> Result<bool> {
-    manager.is_enabled()
+    manager.is_enabled_async().await
 }
 
 /// Builder for the autostart plugin, used to configure the startup arguments, application
@@ -220,59 +291,105 @@ impl Builder {
         PluginBuilder::new("autostart")
             .invoke_handler(tauri::generate_handler![enable, disable, is_enabled])
             .setup(move |app, _api| {
-                let mut builder = AutoLaunchBuilder::new();
-
-                let app_name = self
-                    .app_name
-                    .as_ref()
-                    .unwrap_or_else(|| &app.package_info().name);
-                builder.set_app_name(app_name);
-
-                builder.set_args(&self.args);
-
-                let current_exe = current_exe()?;
-
-                #[cfg(windows)]
-                builder.set_app_path(&current_exe.display().to_string());
-
-                #[cfg(target_os = "macos")]
+                #[cfg(not(target_env = "ohos"))]
                 {
-                    builder.set_macos_launch_mode(self.macos_launcher.to_auto_launch());
-                    // on macOS, current_exe gives path to /Applications/Example.app/MacOS/Example
-                    // but this results in seeing a Unix Executable in macOS login items
-                    // It must be: /Applications/Example.app
-                    // If it didn't find exactly a single occurance of .app, it will default to
-                    // exe path to not break it.
-                    let exe_path = current_exe.canonicalize()?.display().to_string();
-                    let parts: Vec<&str> = exe_path.split(".app/").collect();
-                    let app_path = if parts.len() == 2
-                        && matches!(self.macos_launcher, MacosLauncher::AppleScript)
-                    {
-                        format!("{}.app", parts.first().unwrap())
-                    } else {
-                        exe_path
-                    };
-                    builder.set_app_path(&app_path);
-                }
+                    let mut builder = AutoLaunchBuilder::new();
 
-                #[cfg(target_os = "linux")]
-                if let Some(appimage) = app
-                    .env()
-                    .appimage
-                    .and_then(|p| p.to_str().map(|s| s.to_string()))
-                {
-                    builder.set_app_path(&appimage);
-                } else {
+                    let app_name = self
+                        .app_name
+                        .as_ref()
+                        .unwrap_or_else(|| &app.package_info().name);
+                    builder.set_app_name(app_name);
+
+                    builder.set_args(&self.args);
+
+                    let current_exe = current_exe()?;
+
+                    #[cfg(windows)]
                     builder.set_app_path(&current_exe.display().to_string());
+
+                    #[cfg(target_os = "macos")]
+                    {
+                        builder.set_macos_launch_mode(self.macos_launcher.to_auto_launch());
+                        // on macOS, current_exe gives path to /Applications/Example.app/MacOS/Example
+                        // but this results in seeing a Unix Executable in macOS login items
+                        // It must be: /Applications/Example.app
+                        // If it didn't find exactly a single occurance of .app, it will default to
+                        // exe path to not break it.
+                        let exe_path = current_exe.canonicalize()?.display().to_string();
+                        let parts: Vec<&str> = exe_path.split(".app/").collect();
+                        let app_path = if parts.len() == 2
+                            && matches!(self.macos_launcher, MacosLauncher::AppleScript)
+                        {
+                            format!("{}.app", parts.first().unwrap())
+                        } else {
+                            exe_path
+                        };
+                        builder.set_app_path(&app_path);
+                    }
+
+                    #[cfg(target_os = "linux")]
+                    if let Some(appimage) = app
+                        .env()
+                        .appimage
+                        .and_then(|p| p.to_str().map(|s| s.to_string()))
+                    {
+                        builder.set_app_path(&appimage);
+                    } else {
+                        builder.set_app_path(&current_exe.display().to_string());
+                    }
+
+                    app.manage(AutoLaunchManager(
+                        builder.build().map_err(|e| e.to_string())?,
+                    ));
                 }
 
-                app.manage(AutoLaunchManager(
-                    builder.build().map_err(|e| e.to_string())?,
-                ));
+                #[cfg(target_env = "ohos")]
+                {
+                    let _ = self;
+                    use openharmony_ability_plugin_autostart::{AutostartBridgePlugin, AutostartExt};
+
+                    let ohos_app = ohos_app()?;
+                    match ohos_app.registered_plugin::<AutostartBridgePlugin>() {
+                        Ok(Some(_)) => {}
+                        Ok(None) => {
+                            if let Err(e) = ohos_app.register_plugin(AutostartBridgePlugin) {
+                                log::error!(
+                                    "[autostart] failed to register AutostartBridgePlugin: {}",
+                                    e
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "[autostart] failed to check AutostartBridgePlugin registration: {}",
+                                e
+                            );
+                        }
+                    }
+
+                    let client = ohos_app.autostart().map_err(|e| {
+                        Error::Anyhow(format!("Failed to create AutostartClient: {e}"))
+                    })?;
+                    app.manage(AutoLaunchManager(client));
+                }
                 Ok(())
             })
             .build()
     }
+}
+
+#[cfg(target_env = "ohos")]
+fn ohos_app() -> Result<tauri::ohos::openharmony_ability::OpenHarmonyApp> {
+    tauri::ohos::APP
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().cloned())
+        .ok_or_else(|| {
+            Error::Anyhow(
+                "Failed to create AutostartClient: OHOS APP not initialized".to_string(),
+            )
+        })
 }
 
 /// Initializes the plugin.

@@ -9,6 +9,7 @@
 | macOS    | ✓         |
 | Android  | ✓         |
 | iOS      | ✓         |
+| OpenHarmony | ✓ (reveal is limited, see below) |
 
 ## Install
 
@@ -115,6 +116,19 @@ fn main() {
         .expect("error while running tauri application");
 }
 ```
+
+## OpenHarmony (OHOS) Platform Notes
+
+On HarmonyOS, `revealItemInDir` / `reveal_item_in_dir` (and the multi-path
+variants) launch the **Huawei file manager** (`com.huawei.hmos.filemanager`,
+`MainAbility`, module `pc`) with an explicit Want whose target is passed via
+`want.parameters.fileUri` + `want.parameters.external_storage_uuid = "LOCAL"`.
+Consequences:
+
+- On systems without this file manager, the launch fails and the error is propagated to the caller.
+- Only the parent directory is opened — OHOS has no API to highlight the item inside it. The multi-path variants reveal only the first path's parent.
+- App-sandbox paths (anything under `/data/storage/` or `/data/app/`) are rejected up front with a documented platform-limitation error.
+- Only public directories under `/storage/media/100/local/files/<top>/...` or `/storage/Users/currentUser/...` can be revealed.
 
 ## Contributing
 

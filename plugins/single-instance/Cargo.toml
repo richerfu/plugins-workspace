@@ -13,6 +13,7 @@ exclude = ["/banner.png", "/examples"]
 windows = { level = "full", notes = "" }
 linux = { level = "full", notes = "" }
 macos = { level = "full", notes = "" }
+openharmony = { level = "full", notes = "Uses OS singleton + onNewWant" }
 android = { level = "none", notes = "" }
 ios = { level = "none", notes = "" }
 
@@ -45,8 +46,11 @@ features = [
 version = "0.61"
 features = ["Win32_UI_WindowsAndMessaging"]
 
-[target."cfg(target_os = \"linux\")".dependencies]
+[target."cfg(all(target_os = \"linux\", not(target_env = \"ohos\")))".dependencies]
 zbus = { workspace = true }
+
+[target.'cfg(target_env = "ohos")'.dependencies]
+openharmony-ability-plugin-deep-link = { workspace = true }
 
 [features]
 semver = ["dep:semver"]

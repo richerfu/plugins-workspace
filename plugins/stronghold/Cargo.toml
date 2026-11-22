@@ -21,6 +21,7 @@ windows = { level = "full", notes = "" }
 linux = { level = "full", notes = "" }
 macos = { level = "full", notes = "" }
 android = { level = "full", notes = "" }
+openharmony = { level = "partial", notes = "requires prebuilt libsodium via SODIUM_LIB_DIR and an OHOS-compatible stronghold-runtime; see README OHOS Build" }
 ios = { level = "full", notes = "" }
 
 [build-dependencies]

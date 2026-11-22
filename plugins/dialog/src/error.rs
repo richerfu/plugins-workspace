@@ -18,11 +18,11 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     /// Forwarding a request to, or receiving a response from, the mobile plugin failed.
-    #[cfg(mobile)]
+    #[cfg(all(mobile, not(target_env = "ohos")))]
     #[error(transparent)]
     PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),
     /// The folder picker was requested through the `open` command, but folder picking is not implemented on mobile.
-    #[cfg(mobile)]
+    #[cfg(all(mobile, not(target_env = "ohos")))]
     #[error("Folder picker is not implemented on mobile")]
     FolderPickerNotImplemented,
     /// An error forwarded from the `fs` plugin, returned when granting filesystem scope to a picked path fails.

@@ -4,7 +4,7 @@
 
 //! In-app updates for Tauri applications.
 //!
-//! Supported platforms: Windows, Linux and macOS.
+//! Supported platforms: Windows, Linux, macOS and OpenHarmony (via AppGallery).
 //!
 //! ## Cargo features
 //!
@@ -19,25 +19,36 @@
     html_favicon_url = "https://github.com/tauri-apps/tauri/raw/dev/app-icon.png"
 )]
 
+#[cfg(not(target_env = "ohos"))]
 use std::{ffi::OsString, sync::Arc};
 
+#[cfg(not(target_env = "ohos"))]
 use http::{HeaderMap, HeaderName, HeaderValue};
+#[cfg(not(target_env = "ohos"))]
 use semver::Version;
+#[cfg(not(target_env = "ohos"))]
+use tauri::Manager;
 use tauri::{
-    Manager, Runtime,
+    Runtime,
     plugin::{Builder as PluginBuilder, TauriPlugin},
 };
 
+#[cfg(not(target_env = "ohos"))]
 mod commands;
 mod config;
 mod error;
+#[cfg(target_env = "ohos")]
+mod ohos;
+#[cfg(not(target_env = "ohos"))]
 mod updater;
 
 pub use config::Config;
 pub use error::{Error, Result};
+#[cfg(not(target_env = "ohos"))]
 pub use updater::*;
 
 /// Extensions to [`tauri::App`], [`tauri::AppHandle`], [`tauri::WebviewWindow`], [`tauri::Webview`] and [`tauri::Window`] to access the updater APIs.
+#[cfg(not(target_env = "ohos"))]
 pub trait UpdaterExt<R: Runtime> {
     /// Gets the updater builder to build and updater
     /// that can manually check if an update is available.
@@ -75,6 +86,7 @@ pub trait UpdaterExt<R: Runtime> {
     fn updater(&self) -> Result<Updater>;
 }
 
+#[cfg(not(target_env = "ohos"))]
 impl<R: Runtime, T: Manager<R>> UpdaterExt<R> for T {
     fn updater_builder(&self) -> UpdaterBuilder {
         let app = self.app_handle();
@@ -130,6 +142,7 @@ impl<R: Runtime, T: Manager<R>> UpdaterExt<R> for T {
     }
 }
 
+#[cfg(not(target_env = "ohos"))]
 struct UpdaterState {
     target: Option<String>,
     config: Config,
@@ -154,10 +167,15 @@ struct UpdaterState {
 /// ```
 #[derive(Default)]
 pub struct Builder {
+    #[cfg(not(target_env = "ohos"))]
     target: Option<String>,
+    #[cfg(not(target_env = "ohos"))]
     pubkey: Option<String>,
+    #[cfg(not(target_env = "ohos"))]
     installer_args: Vec<OsString>,
+    #[cfg(not(target_env = "ohos"))]
     headers: HeaderMap,
+    #[cfg(not(target_env = "ohos"))]
     default_version_comparator: Option<VersionComparator>,
 }
 
@@ -175,6 +193,7 @@ impl Builder {
     /// When it is not set, the updater uses the current operating system name (`linux`, `darwin`
     /// or `windows`) in the endpoint URLs and looks for `{os}-{arch}-{bundle_type}` then
     /// `{os}-{arch}` in the manifest.
+    #[cfg(not(target_env = "ohos"))]
     pub fn target(mut self, target: impl Into<String>) -> Self {
         self.target.replace(target.into());
         self
@@ -182,12 +201,14 @@ impl Builder {
 
     /// Sets the public key used to verify the update signature,
     /// overriding the `pubkey` value of the plugin configuration.
+    #[cfg(not(target_env = "ohos"))]
     pub fn pubkey<S: Into<String>>(mut self, pubkey: S) -> Self {
         self.pubkey.replace(pubkey.into());
         self
     }
 
     /// Adds an additional argument to pass to the Windows installer.
+    #[cfg(not(target_env = "ohos"))]
     pub fn installer_args<I, S>(mut self, args: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -198,6 +219,7 @@ impl Builder {
     }
 
     /// Adds multiple additional arguments to pass to the Windows installer.
+    #[cfg(not(target_env = "ohos"))]
     pub fn installer_arg<S>(mut self, arg: S) -> Self
     where
         S: Into<OsString>,
@@ -210,6 +232,7 @@ impl Builder {
     ///
     /// Note: this only removes the additional arguments added through [`Self::installer_args`],
     /// not the ones managed by us (e.g. `/UPDATER` flag passed to the NSIS installer)
+    #[cfg(not(target_env = "ohos"))]
     pub fn clear_installer_args(mut self) -> Self {
         self.installer_args.clear();
         self
@@ -220,6 +243,7 @@ impl Builder {
     /// # Errors
     ///
     /// Returns an error if the header name or the header value is not valid.
+    #[cfg(not(target_env = "ohos"))]
     pub fn header<K, V>(mut self, key: K, value: V) -> Result<Self>
     where
         HeaderName: TryFrom<K>,
@@ -237,6 +261,7 @@ impl Builder {
 
     /// Replaces all the headers sent on updater requests with the given map,
     /// discarding the ones previously added with [`Self::header`].
+    #[cfg(not(target_env = "ohos"))]
     pub fn headers(mut self, headers: HeaderMap) -> Self {
         self.headers = headers;
         self
@@ -251,6 +276,7 @@ impl Builder {
     /// `allowDowngrades` configuration value; it can still be overridden per updater instance with
     /// [`UpdaterBuilder::version_comparator`]. When no comparator is set at all, a release is
     /// installed only if its version is greater than the current one.
+    #[cfg(not(target_env = "ohos"))]
     pub fn default_version_comparator<
         F: Fn(Version, RemoteRelease) -> bool + Send + Sync + 'static,
     >(
@@ -265,6 +291,7 @@ impl Builder {
     /// and `download_and_install` commands used by the JavaScript API.
     ///
     /// Pass the returned plugin to [`tauri::Builder::plugin`].
+    #[cfg(not(target_env = "ohos"))]
     pub fn build<R: Runtime>(self) -> TauriPlugin<R, Config> {
         let pubkey = self.pubkey;
         let target = self.target;
@@ -294,6 +321,44 @@ impl Builder {
                 commands::install,
                 commands::download_and_install,
             ])
+            .build()
+    }
+
+    /// Builds the updater plugin on OpenHarmony, registering the AppGallery-backed
+    /// `check_app_gallery_update` and `show_app_gallery_update_dialog` commands.
+    #[cfg(target_env = "ohos")]
+    pub fn build<R: Runtime>(self) -> TauriPlugin<R, Config> {
+        PluginBuilder::<R, Config>::new("updater")
+            .invoke_handler(tauri::generate_handler![
+                ohos::check_app_gallery_update,
+                ohos::show_app_gallery_update_dialog,
+            ])
+            .setup(move |_app, _api| {
+                use openharmony_ability_plugin_updater::UpdaterBridgePlugin;
+
+                if let Ok(guard) = tauri::ohos::APP.lock() {
+                    if let Some(ohos_app) = guard.as_ref() {
+                        match ohos_app.registered_plugin::<UpdaterBridgePlugin>() {
+                            Ok(Some(_)) => {}
+                            Ok(None) => {
+                                if let Err(e) = ohos_app.register_plugin(UpdaterBridgePlugin) {
+                                    log::error!(
+                                        "[updater] failed to register UpdaterBridgePlugin: {}",
+                                        e
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "[updater] failed to inspect UpdaterBridgePlugin registration: {}",
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            })
             .build()
     }
 }

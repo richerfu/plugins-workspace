@@ -9,6 +9,7 @@ Access the file system.
 | macOS    | ✓         |
 | Android  | ✓         |
 | iOS      | ✓         |
+| OpenHarmony | ✓ (app-sandbox paths only, see below) |
 
 ## Install
 
@@ -63,6 +64,16 @@ import { stat } from '@tauri-apps/plugin-fs'
 
 await stat('/path/to/file')
 ```
+
+## OpenHarmony (OHOS) Notes
+
+On OpenHarmony the plugin runs on the desktop `std::fs` backend and access is
+restricted to the application sandbox by default (the configured scope still
+applies). Only plain paths and `file://` URLs that resolve to local filesystem
+paths are accepted; content/DataShare URIs are not bridged.
+
+The `watch` API is backed by `notify`'s `inotify` backend inside the application
+sandbox.
 
 ## Contributing
 

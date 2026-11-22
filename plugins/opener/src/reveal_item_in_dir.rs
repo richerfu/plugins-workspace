@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 /// ## Platform-specific:
 ///
 /// - **Android / iOS:** Unsupported.
+#[cfg(not(target_env = "ohos"))]
 pub fn reveal_item_in_dir<P: AsRef<Path>>(path: P) -> crate::Result<()> {
     let _path = canonicalize(path.as_ref())?;
 
@@ -40,6 +41,7 @@ pub fn reveal_item_in_dir<P: AsRef<Path>>(path: P) -> crate::Result<()> {
 /// ## Platform-specific:
 ///
 /// - **Android / iOS:** Unsupported.
+#[cfg(not(target_env = "ohos"))]
 pub fn reveal_items_in_dir<I, P>(paths: I) -> crate::Result<()>
 where
     I: IntoIterator<Item = P>,
@@ -75,12 +77,57 @@ where
     Err(crate::Error::UnsupportedPlatform)
 }
 
+/// OHOS variant of [`reveal_item_in_dir`]: async — routed through the
+/// openharmony-ability bridge (TSFN → ArkTS file-manager Want).
+#[cfg(target_env = "ohos")]
+pub async fn reveal_item_in_dir<P: AsRef<Path>>(path: P) -> crate::Result<()> {
+    reveal_items_in_dir(std::iter::once(path)).await
+}
+
+/// OHOS variant of [`reveal_items_in_dir`]: async — only the first path's
+/// parent is revealed (OHOS has no multi-file reveal API).
+#[cfg(target_env = "ohos")]
+pub async fn reveal_items_in_dir<I, P>(paths: I) -> crate::Result<()>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let mut canonicalized = vec![];
+
+    for path in paths {
+        let path = canonicalize(path.as_ref()).unwrap_or_else(|_| path.as_ref().to_path_buf());
+        canonicalized.push(path);
+    }
+
+    imp::reveal_items_in_dir(&canonicalized).await
+}
+
 fn canonicalize(path: &Path) -> crate::Result<PathBuf> {
     #[cfg(windows)]
     let path = crate::windows_shell_path::absolute_and_check_exists(dunce::simplified(path))?;
     #[cfg(not(windows))]
     let path = std::fs::canonicalize(path)?;
     Ok(path)
+}
+
+#[cfg(target_env = "ohos")]
+mod imp {
+    use std::path::PathBuf;
+
+    pub async fn reveal_items_in_dir(paths: &[PathBuf]) -> crate::Result<()> {
+        if let Some(path) = paths.first() {
+            let parent = path
+                .parent()
+                .ok_or_else(|| crate::Error::NoParent(path.to_path_buf()))?;
+            use openharmony_ability_plugin_url::UrlExt;
+            let ohos_app = crate::ohos_app()?;
+            ohos_app
+                .reveal_in_dir(parent.to_string_lossy().to_string())
+                .await
+                .map_err(|e| crate::Error::OpenharmonyAbility(e.to_string()))?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(windows)]
@@ -201,7 +248,7 @@ mod imp {
 }
 
 #[cfg(any(
-    target_os = "linux",
+    all(target_os = "linux", not(target_env = "ohos")),
     target_os = "dragonfly",
     target_os = "freebsd",
     target_os = "netbsd",

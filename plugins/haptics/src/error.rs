@@ -16,7 +16,7 @@ pub enum Error {
     /// The call to the Android or iOS plugin implementation failed, either because the
     /// arguments could not be serialized, the response could not be deserialized, or the
     /// native side rejected the call. Only produced on Android and iOS.
-    #[cfg(mobile)]
+    #[cfg(any(mobile, target_env = "ohos"))]
     #[error(transparent)]
     PluginInvoke(
         #[cfg_attr(feature = "specta", specta(skip))]

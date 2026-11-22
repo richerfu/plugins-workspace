@@ -1,0 +1,17 @@
+{
+  "module": {
+    "name": "notification",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "phone",
+      "tablet",
+      "2in1"
+    ],
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.PUBLISH_AGENT_REMINDER"
+      }
+    ]
+  }
+}

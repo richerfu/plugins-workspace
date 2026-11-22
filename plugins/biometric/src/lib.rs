@@ -4,7 +4,7 @@
 
 //! Prompt the user for biometric authentication.
 //!
-//! - Supported platforms: Android, iOS and macOS.
+//! - Supported platforms: Android, iOS, macOS and OpenHarmony.
 
 use tauri::{
     Manager, Runtime,
@@ -13,20 +13,20 @@ use tauri::{
 
 pub use models::*;
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 mod commands;
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 mod desktop;
 mod error;
-#[cfg(mobile)]
+#[cfg(any(mobile, target_env = "ohos"))]
 mod mobile;
 mod models;
 
 pub use error::{Error, Result};
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 pub use desktop::Biometric;
-#[cfg(mobile)]
+#[cfg(any(mobile, target_env = "ohos"))]
 pub use mobile::Biometric;
 
 /// Extensions to [`tauri::App`], [`tauri::AppHandle`], [`tauri::WebviewWindow`], [`tauri::Webview`] and [`tauri::Window`] to access the biometric APIs.
@@ -45,8 +45,8 @@ impl<R: Runtime, T: Manager<R>> crate::BiometricExt<R> for T {
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     let builder = Builder::new("biometric");
 
-    // On mobile the commands are routed directly to the native plugin.
-    #[cfg(desktop)]
+    // On mobile and OpenHarmony the commands are routed directly to the native plugin.
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         commands::status,
         commands::authenticate,
@@ -54,9 +54,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
 
     builder
         .setup(|app, api| {
-            #[cfg(mobile)]
+            #[cfg(any(mobile, target_env = "ohos"))]
             let biometric = mobile::init(app, api)?;
-            #[cfg(desktop)]
+            #[cfg(all(desktop, not(target_env = "ohos")))]
             let biometric = desktop::init(app, api)?;
             app.manage(biometric);
             Ok(())

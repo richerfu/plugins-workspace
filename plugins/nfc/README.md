@@ -1,6 +1,6 @@
 ![NFC](https://github.com/tauri-apps/plugins-workspace/raw/v2/plugins/nfc/banner.png)
 
-Read and write NFC tags on Android and iOS.
+Read and write NFC tags on Android, iOS and OpenHarmony.
 
 | Platform | Supported |
 | -------- | --------- |
@@ -9,6 +9,7 @@ Read and write NFC tags on Android and iOS.
 | macOS    | x         |
 | Android  | ✓         |
 | iOS      | ✓         |
+| OpenHarmony | ✓ (partial, see below) |
 
 ## Install
 
@@ -65,6 +66,10 @@ import { scan, textRecord, write } from '@tauri-apps/plugin-nfc'
 await scan({ type: 'tag' }, { keepSessionAlive: true })
 await write([textRecord('Tauri is awesome!')])
 ```
+
+### OpenHarmony
+
+`scan`/`write` (NDEF) are implemented through the NFC foreground reader mode (`tag.on('readerMode')`, API 11+). `ohos.permission.NFC_TAG` is declared by the plugin's OpenHarmony HAR module. `onBackground()` unregisters `readerMode` cleanly when leaving the foreground, `onForeground()` re-registers if a session is still armed, and `onDestroy()` cleans up reader mode and pending promises.
 
 ## Contributing
 

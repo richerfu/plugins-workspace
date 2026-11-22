@@ -14,8 +14,8 @@ pub enum Error {
     /// An I/O error occurred.
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    /// Failed to run a command on the mobile plugin implementation (Kotlin on Android, Swift on iOS).
-    #[cfg(mobile)]
+    /// Failed to run a command on the mobile plugin implementation (Kotlin on Android, Swift on iOS, ArkTS on OpenHarmony).
+    #[cfg(any(mobile, target_env = "ohos"))]
     #[error(transparent)]
     PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),
 }

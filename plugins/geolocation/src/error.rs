@@ -13,8 +13,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum Error {
-    /// Forwards an error returned by the underlying Android or iOS plugin invocation.
-    #[cfg(mobile)]
+    /// Forwards an error returned by the underlying Android, iOS or OpenHarmony plugin invocation.
+    #[cfg(any(mobile, target_env = "ohos"))]
     #[error(transparent)]
     PluginInvoke(
         #[cfg_attr(feature = "specta", specta(skip))]

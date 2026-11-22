@@ -296,12 +296,15 @@ impl Default for NotificationData {
 ///
 /// Returned by `Notification::pending`, which is only available on mobile.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(target_env = "ohos", derive(Serialize))]
 #[serde(rename_all = "camelCase")]
 pub struct PendingNotification {
     id: i32,
     title: Option<String>,
     body: Option<String>,
-    schedule: Schedule,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schedule: Option<Schedule>,
 }
 
 impl PendingNotification {
@@ -321,8 +324,8 @@ impl PendingNotification {
     }
 
     /// The schedule that determines when the notification is delivered.
-    pub fn schedule(&self) -> &Schedule {
-        &self.schedule
+    pub fn schedule(&self) -> Option<&Schedule> {
+        self.schedule.as_ref()
     }
 }
 
@@ -768,10 +771,10 @@ impl ActionPerformed {
     }
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_env = "ohos"))]
 pub use android::*;
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_env = "ohos"))]
 mod android {
     use serde::{Deserialize, Serialize};
     use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -826,12 +829,19 @@ mod android {
     pub struct Channel {
         id: String,
         name: String,
+        #[cfg_attr(target_env = "ohos", serde(default))]
         description: Option<String>,
+        #[cfg_attr(target_env = "ohos", serde(default))]
         sound: Option<String>,
+        #[cfg_attr(target_env = "ohos", serde(default))]
         lights: bool,
+        #[cfg_attr(target_env = "ohos", serde(default))]
         light_color: Option<String>,
+        #[cfg_attr(target_env = "ohos", serde(default))]
         vibration: bool,
+        #[cfg_attr(target_env = "ohos", serde(default))]
         importance: Importance,
+        #[cfg_attr(target_env = "ohos", serde(default))]
         visibility: Option<Visibility>,
     }
 

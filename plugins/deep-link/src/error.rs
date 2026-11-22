@@ -14,6 +14,10 @@ pub enum Error {
     /// runtime) is not supported on the current platform.
     #[error("unsupported platform")]
     UnsupportedPlatform,
+    /// OpenHarmony deep link schemes are statically declared in `module.json5` and cannot be modified or queried at runtime.
+    #[cfg(target_env = "ohos")]
+    #[error("{0}")]
+    UnsupportedOnOpenHarmony(String),
     /// Transparent wrapper around an [`std::io::Error`].
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -26,12 +30,12 @@ pub enum Error {
     Windows(#[from] windows_result::Error),
     /// Transparent wrapper around an [`ini::Error`], returned when reading or writing the
     /// `.desktop` file used to register a protocol scheme. Only used on Linux.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     #[error(transparent)]
     Ini(#[from] ini::Error),
     /// Transparent wrapper around an [`ini::ParseError`], returned when parsing the
     /// `.desktop` file used to register a protocol scheme. Only used on Linux.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     #[error(transparent)]
     ParseIni(#[from] ini::ParseError),
     /// Transparent wrapper around a [`tauri::plugin::mobile::PluginInvokeError`], returned
@@ -44,7 +48,7 @@ pub enum Error {
 // TODO(v3): change this into an error in v3,
 // see <https://github.com/tauri-apps/plugins-workspace/pull/2970#issuecomment-3244660138>.
 #[inline]
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 pub(crate) fn inspect_command_error<'a>(command: &'a str) -> impl Fn(&std::io::Error) + 'a {
     move |e| {
         tracing::error!("Failed to run OS command `{command}`: {e}");

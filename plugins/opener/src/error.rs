@@ -11,7 +11,7 @@ use serde::{Serialize, Serializer};
 #[non_exhaustive]
 pub enum Error {
     /// Forwarded from a failed call into the mobile plugin runtime.
-    #[cfg(mobile)]
+    #[cfg(all(mobile, not(target_env = "ohos")))]
     #[error(transparent)]
     PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),
     /// Forwarded from a [`tauri::Error`], e.g. when resolving a scoped path fails.
@@ -60,14 +60,25 @@ pub enum Error {
     /// Failed to convert the path to a `file://` URL, which is required to reveal it via D-Bus on Linux and BSD.
     #[error("Failed to convert path to file:// url")]
     FailedToConvertPathToFileUrl,
+    /// OpenHarmony ability bridge error.
+    #[cfg(target_env = "ohos")]
+    #[error("OpenHarmony ability error: {0}")]
+    OpenharmonyAbility(String),
+    /// Path could not be converted to a `file://` URI on OpenHarmony.
+    #[cfg(target_env = "ohos")]
+    #[error("Invalid path: {0}")]
+    InvalidPath(String),
     /// Forwarded from a [`zbus::Error`] raised while talking to the file manager or the desktop portal over D-Bus.
     #[error(transparent)]
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "dragonfly",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
+    #[cfg(all(
+        any(
+            target_os = "linux",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd",
+            target_os = "openbsd"
+        ),
+        not(target_env = "ohos")
     ))]
     Zbus(#[from] zbus::Error),
 }

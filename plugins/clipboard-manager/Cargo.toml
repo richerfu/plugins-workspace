@@ -26,6 +26,7 @@ linux = { level = "full", notes = "" }
 macos = { level = "full", notes = "" }
 android = { level = "partial", notes = "Only plain-text content support" }
 ios = { level = "partial", notes = "Only plain-text content support" }
+openharmony = { level = "partial", notes = "All methods supported via openharmony-ability-plugin-clipboard; read_text/read_image require READ_PASTEBOARD permission; write_secret delegates to write_text" }
 
 
 [build-dependencies]
@@ -41,5 +42,9 @@ thiserror = { workspace = true }
 [target.'cfg(target_os = "ios")'.dependencies]
 tauri = { workspace = true, features = ["wry"] }
 
-[target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\", target_os = \"dragonfly\", target_os = \"freebsd\", target_os = \"openbsd\", target_os = \"netbsd\"))".dependencies]
+[target."cfg(all(any(target_os = \"macos\", windows, target_os = \"linux\", target_os = \"dragonfly\", target_os = \"freebsd\", target_os = \"openbsd\", target_os = \"netbsd\"), not(target_env = \"ohos\")))".dependencies]
 arboard = { version = "3.6", features = ["wayland-data-control"] }
+
+[target.'cfg(target_env = "ohos")'.dependencies]
+openharmony-ability-plugin-clipboard = { workspace = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }

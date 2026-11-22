@@ -35,6 +35,8 @@ pub enum OsType {
     IOS,
     /// Android.
     Android,
+    /// OpenHarmony.
+    Ohos,
 }
 
 impl Display for OsType {
@@ -45,28 +47,60 @@ impl Display for OsType {
             Self::Macos => write!(f, "macos"),
             Self::IOS => write!(f, "ios"),
             Self::Android => write!(f, "android"),
+            Self::Ohos => write!(f, "ohos"),
         }
     }
 }
 
 /// Returns a string describing the specific operating system in use, see [std::env::consts::OS].
 pub fn platform() -> &'static str {
+    #[cfg(target_env = "ohos")]
+    return "ohos";
+    #[cfg(not(target_env = "ohos"))]
     std::env::consts::OS
 }
 
 /// Returns the current operating system version.
+///
+/// On OHOS, this maps the HarmonyOS distribution API version (e.g. 50001 → 5.0.1)
+/// to a semantic version. If only the OpenHarmony SDK API level is available
+/// (pure OpenHarmony device), it is returned as the patch component (0.0.N).
 pub fn version() -> Version {
+    #[cfg(target_env = "ohos")]
+    {
+        use tauri::ohos::openharmony_ability::version;
+        let dist = version::distribution_api_version();
+        if dist > 0 {
+            let major = (dist / 10000) as u64;
+            let minor = ((dist % 10000) / 100) as u64;
+            let patch = (dist % 100) as u64;
+            Version::Semantic(major, minor, patch)
+        } else {
+            let sdk = version::sdk_api_version();
+            if sdk > 0 {
+                Version::Semantic(0, 0, sdk as u64)
+            } else {
+                Version::Unknown
+            }
+        }
+    }
+    #[cfg(not(target_env = "ohos"))]
     os_info::get().version().clone()
 }
 
 /// Returns the current operating system type.
 pub fn type_() -> OsType {
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "dragonfly",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
+    #[cfg(target_env = "ohos")]
+    return OsType::Ohos;
+    #[cfg(all(
+        not(target_env = "ohos"),
+        any(
+            target_os = "linux",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd",
+            target_os = "openbsd"
+        )
     ))]
     return OsType::Linux;
     #[cfg(target_os = "windows")]
@@ -80,7 +114,12 @@ pub fn type_() -> OsType {
 }
 
 /// Returns the current operating system family, see [std::env::consts::FAMILY].
+///
+/// On OHOS, returns `"ohos"` rather than `"unix"`.
 pub fn family() -> &'static str {
+    #[cfg(target_env = "ohos")]
+    return "ohos";
+    #[cfg(not(target_env = "ohos"))]
     std::env::consts::FAMILY
 }
 
@@ -96,11 +135,26 @@ pub fn exe_extension() -> &'static str {
 
 /// Returns the current operating system locale with the `BCP-47` language tag. If the locale couldn't be obtained, `None` is returned instead.
 pub fn locale() -> Option<String> {
+    #[cfg(target_env = "ohos")]
+    {
+        let guard = tauri::ohos::APP.lock().ok()?;
+        let app = guard.as_ref()?;
+        let live = app.config().language;
+        if !live.is_empty() {
+            Some(live)
+        } else {
+            app.preferred_locales().filter(|l| !l.is_empty())
+        }
+    }
+    #[cfg(not(target_env = "ohos"))]
     sys_locale::get_locale()
 }
 
 /// Returns the current operating system hostname.
 pub fn hostname() -> String {
+    #[cfg(target_env = "ohos")]
+    return String::from("ohos");
+    #[cfg(not(target_env = "ohos"))]
     gethostname::gethostname().to_string_lossy().to_string()
 }
 

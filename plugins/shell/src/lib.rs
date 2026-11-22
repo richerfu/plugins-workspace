@@ -8,6 +8,7 @@
     html_logo_url = "https://github.com/tauri-apps/tauri/raw/dev/app-icon.png",
     html_favicon_url = "https://github.com/tauri-apps/tauri/raw/dev/app-icon.png"
 )]
+#![cfg_attr(test, allow(deprecated))]
 
 use std::{
     collections::HashMap,
@@ -37,7 +38,42 @@ mod scope_entry;
 pub use error::Error;
 type Result<T> = std::result::Result<T, Error>;
 
-#[cfg(mobile)]
+#[cfg(target_env = "ohos")]
+pub(crate) fn ensure_url_bridge_plugin(
+    ohos_app: &tauri::ohos::openharmony_ability::OpenHarmonyApp,
+) {
+    use openharmony_ability_plugin_url::UrlBridgePlugin;
+
+    match ohos_app.registered_plugin::<UrlBridgePlugin>() {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            if let Err(e) = ohos_app.register_plugin(UrlBridgePlugin) {
+                log::error!("[shell] failed to register UrlBridgePlugin: {}", e);
+            }
+        }
+        Err(e) => {
+            log::error!(
+                "[shell] failed to inspect UrlBridgePlugin registration: {}",
+                e
+            );
+        }
+    }
+}
+
+/// Clones the global OpenHarmony app handle set by the tauri runtime,
+/// or fails when the plugin is used before the app is initialized.
+#[cfg(target_env = "ohos")]
+pub(crate) fn ohos_app() -> crate::Result<tauri::ohos::openharmony_ability::OpenHarmonyApp> {
+    let app = tauri::ohos::APP
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().cloned())
+        .ok_or_else(|| crate::Error::OpenharmonyAbility("OHOS APP not initialized".to_string()))?;
+    ensure_url_bridge_plugin(&app);
+    Ok(app)
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
 use tauri::plugin::PluginHandle;
 #[cfg(target_os = "android")]
 const PLUGIN_IDENTIFIER: &str = "app.tauri.shell";
@@ -52,7 +88,7 @@ type ChildStore = Arc<Mutex<HashMap<u32, CommandChild>>>;
 pub struct Shell<R: Runtime> {
     #[allow(dead_code)]
     app: AppHandle<R>,
-    #[cfg(mobile)]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     mobile_plugin_handle: PluginHandle<R>,
     open_scope: scope::OpenScope,
     children: ChildStore,
@@ -75,17 +111,30 @@ impl<R: Runtime> Shell<R> {
     /// Open a (url) path with a default or specific browser opening program.
     ///
     /// See [`crate::open::open`] for how it handles security-related measures.
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     #[deprecated(since = "2.1.0", note = "Use tauri-plugin-opener instead.")]
     #[allow(deprecated)]
     pub fn open(&self, path: impl Into<String>, with: Option<open::Program>) -> Result<()> {
         open::open(None, path.into(), with)
     }
 
+    /// Open a (url) path in the system default application on OpenHarmony.
+    ///
+    /// OHOS: async — routed through the openharmony-ability bridge.
+    /// `with` is unsupported on OHOS and ignored (system default only).
+    ///
+    /// See [`crate::open::open`] for how it handles security-related measures.
+    #[cfg(target_env = "ohos")]
+    #[deprecated(since = "2.1.0", note = "Use tauri-plugin-opener instead.")]
+    #[allow(deprecated)]
+    pub async fn open(&self, path: impl Into<String>, with: Option<open::Program>) -> Result<()> {
+        open::open(None, path.into(), with).await
+    }
+
     /// Open a (url) path with a default or specific browser opening program.
     ///
     /// See [`crate::open::open`] for how it handles security-related measures.
-    #[cfg(mobile)]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     #[deprecated(since = "2.1.0", note = "Use tauri-plugin-opener instead.")]
     #[allow(deprecated)]
     pub fn open(&self, path: impl Into<String>, _with: Option<open::Program>) -> Result<()> {
@@ -149,13 +198,21 @@ pub fn init<R: Runtime>() -> TauriPlugin<R, Option<config::Config>> {
             let handle = api.register_android_plugin(PLUGIN_IDENTIFIER, "ShellPlugin")?;
             #[cfg(target_os = "ios")]
             let handle = api.register_ios_plugin(init_plugin_shell)?;
+            #[cfg(target_env = "ohos")]
+            {
+                if let Ok(guard) = tauri::ohos::APP.lock() {
+                    if let Some(ohos_app) = guard.as_ref() {
+                        ensure_url_bridge_plugin(ohos_app);
+                    }
+                }
+            }
 
             app.manage(Shell {
                 app: app.clone(),
                 children: Default::default(),
                 open_scope: open_scope(&config.open),
 
-                #[cfg(mobile)]
+                #[cfg(any(target_os = "android", target_os = "ios"))]
                 mobile_plugin_handle: handle,
             });
             Ok(())

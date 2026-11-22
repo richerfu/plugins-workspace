@@ -24,6 +24,16 @@ pub use error::{Error, Result};
 #[cfg(target_os = "android")]
 const PLUGIN_IDENTIFIER: &str = "app.tauri.deep_link";
 
+/// Runs `f` against the global OHOS app instance held in [`tauri::ohos::APP`].
+/// Returns `None` when the app is not initialized yet or its lock is poisoned.
+#[cfg(target_env = "ohos")]
+fn with_ohos_app<R>(
+    f: impl FnOnce(&tauri::ohos::openharmony_ability::OpenHarmonyApp) -> R,
+) -> Option<R> {
+    let guard = tauri::ohos::APP.lock().ok()?;
+    guard.as_ref().map(f)
+}
+
 fn init_deep_link<R: Runtime>(
     app: &AppHandle<R>,
     api: PluginApi<R, Option<config::Config>>,
@@ -78,7 +88,32 @@ fn init_deep_link<R: Runtime>(
         config: api.config().clone(),
     });
 
-    #[cfg(desktop)]
+    #[cfg(target_env = "ohos")]
+    {
+        use openharmony_ability_plugin_deep_link::DeepLinkBridgePlugin;
+
+        let _ = with_ohos_app(|ohos_app| {
+            match ohos_app.registered_plugin::<DeepLinkBridgePlugin>() {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    if let Err(e) = ohos_app.register_plugin(DeepLinkBridgePlugin) {
+                        tracing::error!("failed to register DeepLinkBridgePlugin: {e}");
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("failed to check DeepLinkBridgePlugin registration: {e}");
+                }
+            }
+        });
+
+        return Ok(DeepLink {
+            app: app.clone(),
+            current: Default::default(),
+            config: api.config().clone(),
+        });
+    }
+
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     {
         let args = std::env::args();
         let deep_link = DeepLink {
@@ -170,13 +205,13 @@ mod imp {
 #[cfg(not(target_os = "android"))]
 mod imp {
     use std::sync::Mutex;
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     use std::{
         fs::{File, create_dir_all},
         io::Write,
         process::Command,
     };
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     use tauri::Manager;
     use tauri::{AppHandle, Runtime};
     #[cfg(windows)]
@@ -208,7 +243,7 @@ mod imp {
                 return;
             };
 
-            if cfg!(windows) || cfg!(target_os = "linux") {
+            if cfg!(windows) || (cfg!(target_os = "linux") && !cfg!(target_env = "ohos")) {
                 args.next(); // bin name
                 let arg = args.next();
 
@@ -238,8 +273,33 @@ mod imp {
         /// - **Windows / Linux**: This function reads the command line arguments and checks if there's only one value, which must be an URL with scheme matching one of the configured values.
         ///   Note that you must manually check the arguments when registering deep link schemes dynamically with [`Self::register`].
         ///   Additionally, the deep link might have been provided as a CLI argument so you should check if its format matches what you expect.
+        /// - **OpenHarmony**: Returns the cold-start want URI captured in `onAbilityCreateWithWant` (lazy take via `DeepLinkClient::take_initial_uri`); subsequent calls return the cached `current` set by `RunEvent::Opened`.
         pub fn get_current(&self) -> crate::Result<Option<Vec<url::Url>>> {
-            return Ok(self.current.lock().unwrap().clone());
+            #[cfg(target_env = "ohos")]
+            {
+                use openharmony_ability_plugin_deep_link::DeepLinkExt;
+
+                let initial = crate::with_ohos_app(|app| match app.deep_link() {
+                    Ok(client) => client.take_initial_uri(),
+                    Err(_) => String::new(),
+                })
+                .unwrap_or_default();
+                tracing::debug!("get_current lazy-take returned: {:?}", initial);
+                if !initial.is_empty() {
+                    if let Ok(url) = initial.parse::<url::Url>() {
+                        let mut current = self.current.lock().unwrap();
+                        if current.is_none() {
+                            current.replace(vec![url]);
+                        }
+                    } else {
+                        tracing::warn!(
+                            "failed to parse initial want uri ({} bytes)",
+                            initial.len()
+                        );
+                    }
+                }
+            }
+            Ok(self.current.lock().unwrap().clone())
         }
 
         /// Registers all schemes defined in the configuration file.
@@ -267,6 +327,14 @@ mod imp {
         /// - **Linux**: Needs the `xdg-mime` command available on the system. `update-desktop-database` is used to refresh the MIME cache when available.
         /// - **macOS / Android / iOS**: Unsupported, will return [`Error::UnsupportedPlatform`](`crate::Error::UnsupportedPlatform`).
         pub fn register<S: AsRef<str>>(&self, _protocol: S) -> crate::Result<()> {
+            #[cfg(target_env = "ohos")]
+            {
+                let _ = _protocol;
+                return Err(crate::Error::UnsupportedOnOpenHarmony(
+                    "register is not supported on OpenHarmony: deep link schemes are statically declared in module.json5 at build time".to_string(),
+                ));
+            }
+
             #[cfg(windows)]
             {
                 let protocol = _protocol.as_ref();
@@ -290,7 +358,7 @@ mod imp {
                 Ok(())
             }
 
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
             {
                 let bin = tauri::utils::platform::current_exe()?;
                 let file_name = format!(
@@ -373,6 +441,14 @@ mod imp {
         /// - **Linux**: Can only unregister the scheme if it was initially registered with [`register`](`Self::register`). May not work on older distros.
         /// - **macOS / Android / iOS**: Unsupported, will return [`Error::UnsupportedPlatform`](`crate::Error::UnsupportedPlatform`).
         pub fn unregister<S: AsRef<str>>(&self, _protocol: S) -> crate::Result<()> {
+            #[cfg(target_env = "ohos")]
+            {
+                let _ = _protocol;
+                return Err(crate::Error::UnsupportedOnOpenHarmony(
+                    "unregister is not supported on OpenHarmony: deep link schemes are statically declared in module.json5 at build time".to_string(),
+                ));
+            }
+
             #[cfg(windows)]
             {
                 let protocol = _protocol.as_ref();
@@ -386,7 +462,7 @@ mod imp {
                 Ok(())
             }
 
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
             {
                 let file_name = format!(
                     "{}-handler.desktop",
@@ -456,6 +532,14 @@ mod imp {
         /// - **Linux**: Needs the `xdg-mime` command available on the system.
         /// - **macOS / Android / iOS**: Unsupported, will return [`Error::UnsupportedPlatform`](`crate::Error::UnsupportedPlatform`).
         pub fn is_registered<S: AsRef<str>>(&self, _protocol: S) -> crate::Result<bool> {
+            #[cfg(target_env = "ohos")]
+            {
+                let _ = _protocol;
+                return Err(crate::Error::UnsupportedOnOpenHarmony(
+                    "isRegistered is not supported on OpenHarmony: deep link registration is static (module.json5) and cannot be queried at runtime".to_string(),
+                ));
+            }
+
             #[cfg(windows)]
             {
                 let protocol = _protocol.as_ref();
@@ -472,7 +556,7 @@ mod imp {
 
                 Ok(registered_cmd == format!("\"{exe}\" \"%1\""))
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
             {
                 let file_name = format!(
                     "{}-handler.desktop",
@@ -507,7 +591,7 @@ mod imp {
     }
 
     /// Runs the command, failing if it cannot be spawned or exits unsuccessfully.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     fn run_command(command: &mut Command) -> std::io::Result<()> {
         let name = command.get_program().to_string_lossy().into_owned();
         command
@@ -518,7 +602,7 @@ mod imp {
 
     /// Refreshes the desktop entry MIME cache. `update-desktop-database` is not installed on
     /// every distro and the cache is only an optimization, so a missing binary is not an error.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     fn update_desktop_database(target: &std::path::Path) -> std::io::Result<()> {
         const NAME: &str = "update-desktop-database";
         match Command::new(NAME).arg(target).status() {
@@ -535,7 +619,7 @@ mod imp {
         }
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     fn check_command_status(
         command: &str,
         status: std::process::ExitStatus,
@@ -551,7 +635,7 @@ mod imp {
 
     /// Loads a desktop entry file keeping its values in desktop-file syntax, so quotes and
     /// escapes (e.g. in `Exec`) survive a rewrite with [`ini::EscapePolicy::Nothing`].
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     fn load_desktop_ini(path: &std::path::Path) -> Result<ini::Ini, ini::Error> {
         ini::Ini::load_from_file_opt(
             path,
@@ -566,7 +650,7 @@ mod imp {
     }
 
     /// Adds `item` to the front of the `;`-separated list in `key`. Returns whether it changed.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     fn add_list_entry(section: &mut ini::Properties, key: &str, item: &str) -> bool {
         let value = section.get(key).unwrap_or_default();
         if value.split(';').any(|entry| entry == item) {
@@ -582,7 +666,7 @@ mod imp {
 
     /// Removes `item` from the `;`-separated list in `key`, dropping the key once it is empty.
     /// Returns whether it changed.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     fn remove_list_entry(section: &mut ini::Properties, key: &str, item: &str) -> bool {
         let Some(remaining) = section
             .get(key)
@@ -599,7 +683,7 @@ mod imp {
     }
 
     /// Returns the `;`-separated `list` without `item`, or `None` if it does not contain it.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     fn remove_from_list(list: &str, item: &str) -> Option<String> {
         if !list.split(';').any(|entry| entry == item) {
             return None;
@@ -619,7 +703,7 @@ mod imp {
     /// Removes `desktop_file` from the `mime_type` associations of a `mimeapps.list`.
     /// Edits it line by line so the user's comments and formatting survive.
     /// Returns `None` if nothing changed.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     fn remove_mimeapps_association(
         mimeapps: &str,
         mime_type: &str,
@@ -717,8 +801,12 @@ pub fn init<R: Runtime>() -> TauriPlugin<R, Option<config::Config>> {
             Ok(())
         })
         .on_event(|_app, _event| {
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            #[cfg(any(target_os = "macos", target_os = "ios", target_env = "ohos"))]
             if let tauri::RunEvent::Opened { urls } = _event {
+                #[cfg(target_env = "ohos")]
+                if urls.is_empty() {
+                    return;
+                }
                 use tauri::Emitter;
 
                 let _ = _app.emit("deep-link://new-url", urls);

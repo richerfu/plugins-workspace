@@ -33,7 +33,7 @@ use iota_stronghold::{
 use serde::{Deserialize, Deserializer, de::Visitor};
 use stronghold::{Error, Result, Stronghold};
 use tauri::{
-    Manager, Runtime, State,
+    AppHandle, Manager, Runtime, State,
     plugin::{Builder as PluginBuilder, TauriPlugin},
 };
 use zeroize::{Zeroize, Zeroizing};
@@ -245,7 +245,8 @@ impl From<ProcedureDto> for StrongholdProcedure {
 }
 
 #[tauri::command]
-async fn initialize(
+async fn initialize<R: Runtime>(
+    app: AppHandle<R>,
     collection: State<'_, StrongholdCollection>,
     hash_function: State<'_, PasswordHashFunction>,
     snapshot_path: PathBuf,
@@ -253,7 +254,25 @@ async fn initialize(
 ) -> Result<()> {
     let hash = (hash_function.0)(&password);
     password.zeroize();
-    let stronghold = Stronghold::new(snapshot_path.clone(), hash)?;
+
+    #[cfg(target_env = "ohos")]
+    let snapshot_io_path = app
+        .path()
+        .resolve(&snapshot_path, tauri::path::BaseDirectory::AppData)
+        .unwrap_or_else(|e| {
+            log::warn!(
+                "[stronghold] OHOS path resolve failed for {:?}: {} (falling back to literal path)",
+                snapshot_path,
+                e
+            );
+            snapshot_path.clone()
+        });
+    #[cfg(not(target_env = "ohos"))]
+    let _ = &app;
+    #[cfg(not(target_env = "ohos"))]
+    let snapshot_io_path = snapshot_path.clone();
+
+    let stronghold = Stronghold::new(snapshot_io_path, hash)?;
 
     collection
         .0

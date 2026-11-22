@@ -393,6 +393,18 @@ pub enum TargetKind {
         /// Name of the log file, without extension. Defaults to the app's package name when `None`.
         file_name: Option<String>,
     },
+    /// Forward logs to the OpenHarmony hilog system log.
+    ///
+    /// ### Platform-specific
+    ///
+    /// - **OHOS**: writes logs through the hilog NDK API using the given `tag`
+    ///   (max 31 bytes, truncated by hilog if longer).
+    /// - **Other platforms**: this variant does not exist (compile-time cfg).
+    #[cfg(target_env = "ohos")]
+    Hilog {
+        /// Hilog tag string.
+        tag: String,
+    },
     /// Forward logs to the webview (via the `log://log` event).
     ///
     /// This requires the webview to subscribe to log events, via this plugins `attachConsole` function.
@@ -805,10 +817,17 @@ impl Builder {
                         );
                     }
                 }),
-                #[cfg(desktop)]
+                #[cfg(any(desktop, target_env = "ohos"))]
                 TargetKind::Stdout => std::io::stdout().into(),
-                #[cfg(desktop)]
+                #[cfg(any(desktop, target_env = "ohos"))]
                 TargetKind::Stderr => std::io::stderr().into(),
+                #[cfg(target_env = "ohos")]
+                TargetKind::Hilog { tag } => {
+                    let mut builder = hilog::Builder::new();
+                    builder.set_tag(&tag).filter_level(log::LevelFilter::Trace);
+                    let logger = builder.build();
+                    fern::Output::call(move |record| log::Log::log(&logger, record))
+                }
                 TargetKind::Folder { path, file_name } => {
                     if !path.exists() {
                         fs::create_dir_all(&path)?;

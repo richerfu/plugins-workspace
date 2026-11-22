@@ -584,6 +584,33 @@ impl<R: Runtime> Store<R> {
         self.store.lock().unwrap().save()
     }
 
+    /// Like [`Self::save`], but on OHOS degrades to skip instead of blocking the
+    /// main thread when the `StoreInner` mutex is contended during `RunEvent::Exit`
+    /// or `Drop`. Other platforms pass through to [`Self::save`].
+    pub(crate) fn save_or_skip(&self) -> crate::Result<()> {
+        #[cfg(target_env = "ohos")]
+        {
+            match self.store.try_lock() {
+                Ok(guard) => {
+                    if let Ok(mut sender_guard) = self.auto_save_debounce_sender.try_lock() {
+                        if let Some(sender) = sender_guard.take() {
+                            let _ = sender.send(AutoSaveMessage::Cancel);
+                        }
+                    }
+                    guard.save()
+                }
+                Err(_) => {
+                    tracing::warn!("store: StoreInner locked, skipping save");
+                    Ok(())
+                }
+            }
+        }
+        #[cfg(not(target_env = "ohos"))]
+        {
+            self.save()
+        }
+    }
+
     /// Removes the store from the resource table
     pub fn close_resource(&self) {
         let store = self.store.lock().unwrap();
@@ -633,6 +660,7 @@ impl<R: Runtime> Store<R> {
         Ok(())
     }
 
+    #[cfg(not(target_env = "ohos"))]
     fn apply_pending_auto_save(&self) {
         // Cancel and save if auto save is pending
         let auto_save_debounce_sender = self.auto_save_debounce_sender.lock().unwrap().take();
@@ -645,6 +673,20 @@ impl<R: Runtime> Store<R> {
 
 impl<R: Runtime> Drop for Store<R> {
     fn drop(&mut self) {
+        #[cfg(target_env = "ohos")]
+        {
+            let sender = match self.auto_save_debounce_sender.try_lock() {
+                Ok(mut guard) => guard.take(),
+                Err(_) => None,
+            };
+            if let Some(sender) = sender {
+                let _ = sender.send(AutoSaveMessage::Cancel);
+                if let Err(err) = self.save_or_skip() {
+                    tracing::warn!("store: Drop auto-save failed: {err:?}");
+                }
+            }
+        }
+        #[cfg(not(target_env = "ohos"))]
         self.apply_pending_auto_save();
     }
 }

@@ -1,0 +1,30 @@
+[package]
+name = "tauri-plugin-huawei-account"
+version = "0.1.0"
+description = "Huawei account one-tap login for Tauri applications (OpenHarmony)."
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+rust-version = { workspace = true }
+repository = { workspace = true }
+links = "tauri-plugin-huawei-account"
+
+[package.metadata.platforms.support]
+windows = { level = "none", notes = "returns unsupported" }
+linux = { level = "none", notes = "returns unsupported" }
+macos = { level = "none", notes = "returns unsupported" }
+android = { level = "none", notes = "" }
+ios = { level = "none", notes = "" }
+openharmony = { level = "partial", notes = "login/silent_login/logout via Account Kit; profile fields empty (option A)" }
+
+[build-dependencies]
+tauri-plugin = { workspace = true, features = ["build"] }
+
+[dependencies]
+serde = { workspace = true }
+tauri = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(target_env = "ohos")'.dependencies]
+openharmony-ability-plugin-account = { workspace = true }

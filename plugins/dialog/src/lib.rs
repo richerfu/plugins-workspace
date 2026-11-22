@@ -28,10 +28,12 @@ use std::{
 pub use models::*;
 
 pub use tauri_plugin_fs::FilePath;
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 mod desktop;
-#[cfg(mobile)]
+#[cfg(all(mobile, not(target_env = "ohos")))]
 mod mobile;
+#[cfg(target_env = "ohos")]
+mod ohos;
 
 mod commands;
 mod error;
@@ -39,15 +41,19 @@ mod models;
 
 pub use error::{Error, Result};
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 use desktop::*;
-#[cfg(mobile)]
+#[cfg(all(mobile, not(target_env = "ohos")))]
 use mobile::*;
+#[cfg(target_env = "ohos")]
+use ohos::*;
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 pub use desktop::Dialog;
-#[cfg(mobile)]
+#[cfg(all(mobile, not(target_env = "ohos")))]
 pub use mobile::Dialog;
+#[cfg(target_env = "ohos")]
+pub use ohos::Dialog;
 
 /// The preferred mode of the file picker on mobile platforms (iOS and Android), which have
 /// distinct file and media pickers. On desktop, this option is ignored.
@@ -75,11 +81,11 @@ pub enum FileAccessMode {
 }
 
 pub(crate) const OK: &str = "Ok";
-#[cfg(mobile)]
+#[cfg(any(mobile, target_env = "ohos"))]
 pub(crate) const CANCEL: &str = "Cancel";
-#[cfg(mobile)]
+#[cfg(any(mobile, target_env = "ohos"))]
 pub(crate) const YES: &str = "Yes";
-#[cfg(mobile)]
+#[cfg(any(mobile, target_env = "ohos"))]
 pub(crate) const NO: &str = "No";
 
 macro_rules! blocking_fn {
@@ -217,10 +223,12 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::message,
         ])
         .setup(|app, api| {
-            #[cfg(mobile)]
+            #[cfg(all(mobile, not(target_env = "ohos")))]
             let dialog = mobile::init(app, api)?;
-            #[cfg(desktop)]
+            #[cfg(all(desktop, not(target_env = "ohos")))]
             let dialog = desktop::init(app, api)?;
+            #[cfg(target_env = "ohos")]
+            let dialog = ohos::init(app, api)?;
             app.manage(dialog);
             Ok(())
         })
@@ -235,12 +243,14 @@ pub struct MessageDialogBuilder<R: Runtime> {
     pub(crate) message: String,
     pub(crate) kind: MessageDialogKind,
     pub(crate) buttons: MessageDialogButtons,
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     pub(crate) parent: Option<crate::desktop::WindowHandle>,
+    #[cfg(target_env = "ohos")]
+    pub(crate) parent_window_id: Option<i64>,
 }
 
 /// Payload for the message dialog mobile API.
-#[cfg(mobile)]
+#[cfg(all(mobile, not(target_env = "ohos")))]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MessageDialogPayload<'a> {
@@ -264,12 +274,14 @@ impl<R: Runtime> MessageDialogBuilder<R> {
             message: message.into(),
             kind: MessageDialogKind::default(),
             buttons: MessageDialogButtons::default(),
-            #[cfg(desktop)]
+            #[cfg(all(desktop, not(target_env = "ohos")))]
             parent: None,
+            #[cfg(target_env = "ohos")]
+            parent_window_id: None,
         }
     }
 
-    #[cfg(mobile)]
+    #[cfg(all(mobile, not(target_env = "ohos")))]
     pub(crate) fn payload(&self) -> MessageDialogPayload<'_> {
         let (ok_button_label, no_button_label, cancel_button_label) = match &self.buttons {
             MessageDialogButtons::Ok => (Some(OK), None, None),
@@ -301,7 +313,7 @@ impl<R: Runtime> MessageDialogBuilder<R> {
     }
 
     /// Set parent windows explicitly (optional)
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     pub fn parent<W: raw_window_handle::HasWindowHandle + raw_window_handle::HasDisplayHandle>(
         mut self,
         parent: &W,
@@ -314,6 +326,12 @@ impl<R: Runtime> MessageDialogBuilder<R> {
                 display_handle.as_raw(),
             ));
         }
+        self
+    }
+
+    #[cfg(target_env = "ohos")]
+    pub(crate) fn ohos_parent_window_id(mut self, window_id: i64) -> Self {
+        self.parent_window_id = Some(window_id);
         self
     }
 
@@ -403,11 +421,13 @@ pub struct FileDialogBuilder<R: Runtime> {
     pub(crate) can_create_directories: Option<bool>,
     pub(crate) picker_mode: Option<PickerMode>,
     pub(crate) file_access_mode: Option<FileAccessMode>,
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     pub(crate) parent: Option<crate::desktop::WindowHandle>,
+    #[cfg(target_env = "ohos")]
+    pub(crate) parent_window_id: Option<i64>,
 }
 
-#[cfg(mobile)]
+#[cfg(all(mobile, not(target_env = "ohos")))]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FileDialogPayload<'a> {
@@ -433,12 +453,14 @@ impl<R: Runtime> FileDialogBuilder<R> {
             can_create_directories: None,
             picker_mode: None,
             file_access_mode: None,
-            #[cfg(desktop)]
+            #[cfg(all(desktop, not(target_env = "ohos")))]
             parent: None,
+            #[cfg(target_env = "ohos")]
+            parent_window_id: None,
         }
     }
 
-    #[cfg(mobile)]
+    #[cfg(all(mobile, not(target_env = "ohos")))]
     pub(crate) fn payload(&self, multiple: bool) -> FileDialogPayload<'_> {
         FileDialogPayload {
             file_name: &self.file_name,
@@ -474,7 +496,7 @@ impl<R: Runtime> FileDialogBuilder<R> {
     }
 
     /// Sets the parent window of the dialog.
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     #[must_use]
     pub fn set_parent<
         W: raw_window_handle::HasWindowHandle + raw_window_handle::HasDisplayHandle,
@@ -490,6 +512,12 @@ impl<R: Runtime> FileDialogBuilder<R> {
                 display_handle.as_raw(),
             ));
         }
+        self
+    }
+
+    #[cfg(target_env = "ohos")]
+    pub(crate) fn ohos_parent_window_id(mut self, window_id: i64) -> Self {
+        self.parent_window_id = Some(window_id);
         self
     }
 
@@ -615,7 +643,7 @@ impl<R: Runtime> FileDialogBuilder<R> {
     ///     Ok(())
     ///   });
     /// ```
-    #[cfg(desktop)]
+    #[cfg(any(desktop, target_env = "ohos"))]
     pub fn pick_folder<F: FnOnce(Option<FilePath>) + Send + 'static>(self, f: F) {
         pick_folder(self, f)
     }
@@ -640,7 +668,7 @@ impl<R: Runtime> FileDialogBuilder<R> {
     ///     Ok(())
     ///   });
     /// ```
-    #[cfg(desktop)]
+    #[cfg(any(desktop, target_env = "ohos"))]
     pub fn pick_folders<F: FnOnce(Option<Vec<FilePath>>) + Send + 'static>(self, f: F) {
         pick_folders(self, f)
     }
@@ -734,7 +762,7 @@ impl<R: Runtime> FileDialogBuilder<R> {
     ///   // the folder path is `None` if the user closed the dialog
     /// }
     /// ```
-    #[cfg(desktop)]
+    #[cfg(any(desktop, target_env = "ohos"))]
     pub fn blocking_pick_folder(self) -> Option<FilePath> {
         blocking_fn!(self, pick_folder)
     }
@@ -757,7 +785,7 @@ impl<R: Runtime> FileDialogBuilder<R> {
     ///   // the folder paths value is `None` if the user closed the dialog
     /// }
     /// ```
-    #[cfg(desktop)]
+    #[cfg(any(desktop, target_env = "ohos"))]
     pub fn blocking_pick_folders(self) -> Option<Vec<FilePath>> {
         blocking_fn!(self, pick_folders)
     }

@@ -38,12 +38,13 @@ type Platform =
   | 'openbsd'
   | 'solaris'
   | 'android'
+  | 'ohos'
   | 'windows'
 
 /**
  * A coarse-grained operating system category, as returned by {@link type}.
  */
-type OsType = 'linux' | 'windows' | 'macos' | 'ios' | 'android'
+type OsType = 'linux' | 'windows' | 'macos' | 'ios' | 'android' | 'ohos'
 
 /**
  * A string describing the specific operating system architecture in use, as returned by {@link arch}.
@@ -81,7 +82,7 @@ function eol(): string {
 
 /**
  * Returns a string describing the specific operating system in use.
- * The value is set at compile time. Possible values are `'linux'`, `'macos'`, `'ios'`, `'freebsd'`, `'dragonfly'`, `'netbsd'`, `'openbsd'`, `'solaris'`, `'android'`, `'windows'`
+ * The value is set at compile time. Possible values are `'linux'`, `'macos'`, `'ios'`, `'freebsd'`, `'dragonfly'`, `'netbsd'`, `'openbsd'`, `'solaris'`, `'android'`, `'ohos'`, `'windows'`
  *
  * @example
  * ```typescript
@@ -115,10 +116,10 @@ function version(): string {
 /**
  * A string describing the operating system family, as returned by {@link family}.
  */
-type Family = 'unix' | 'windows'
+type Family = 'unix' | 'windows' | 'ohos'
 
 /**
- * Returns the current operating system family. Possible values are `'unix'`, `'windows'`.
+ * Returns the current operating system family. Possible values are `'unix'`, `'windows'`, `'ohos'`.
  * @example
  * ```typescript
  * import { family } from '@tauri-apps/plugin-os';
@@ -133,7 +134,7 @@ function family(): Family {
 }
 
 /**
- * Returns the current operating system type. Returns `'linux'` on Linux, `'macos'` on macOS, `'windows'` on Windows, `'ios'` on iOS and `'android'` on Android.
+ * Returns the current operating system type. Returns `'linux'` on Linux, `'macos'` on macOS, `'windows'` on Windows, `'ios'` on iOS, `'android'` on Android and `'ohos'` on OpenHarmony.
  * @example
  * ```typescript
  * import { type } from '@tauri-apps/plugin-os';

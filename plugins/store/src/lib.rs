@@ -131,6 +131,14 @@ async fn load<R: Runtime>(
     options: Option<LoadStoreOptions>,
 ) -> Result<ResourceId> {
     let builder = builder(app, store_state, path, options)?;
+    #[cfg(target_env = "ohos")]
+    let (_, rid) = tauri::async_runtime::spawn_blocking(move || builder.build_inner())
+        .await
+        .map_err(|e| {
+            tracing::error!("store load spawn_blocking join failed: {}", e);
+            crate::Error::Io(std::io::Error::other(e))
+        })??;
+    #[cfg(not(target_env = "ohos"))]
     let (_, rid) = builder.build_inner()?;
     Ok(rid)
 }
@@ -479,6 +487,15 @@ impl Builder {
                     let stores: Vec<_> = {
                         let resources = app_handle.resources_table();
                         let collection = app_handle.state::<StoreState>();
+                        #[cfg(target_env = "ohos")]
+                        let stores = match collection.stores.try_read() {
+                            Ok(g) => g,
+                            Err(_) => {
+                                tracing::warn!("store: stores map locked on exit, skipping save");
+                                return;
+                            }
+                        };
+                        #[cfg(not(target_env = "ohos"))]
                         let stores = collection.stores.read().unwrap();
                         stores
                             .iter()
@@ -488,7 +505,7 @@ impl Builder {
                             .collect()
                     };
                     for (path, store) in stores {
-                        if let Err(err) = store.save() {
+                        if let Err(err) = store.save_or_skip() {
                             tracing::error!("failed to save store {path:?} with error {err:?}");
                         }
                     }

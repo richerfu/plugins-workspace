@@ -123,6 +123,10 @@ pub enum Error {
         "The update signature does not specify the version it was signed for, which `requireSignedVersion` requires. Re-sign and re-publish this release, or disable `requireSignedVersion`."
     )]
     MissingSignedVersion,
+    /// This operation is not supported on OpenHarmony.
+    #[cfg(target_env = "ohos")]
+    #[error("This operation is not supported on the current platform")]
+    UnsupportedPlatform,
     /// Tauri errors.
     #[error(transparent)]
     Tauri(#[from] tauri::Error),

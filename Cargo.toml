@@ -12,10 +12,10 @@ resolver = "3"
 serde = { version = "1", features = ["derive"] }
 tracing = "0.1"
 log = "0.4.21"
-tauri = { version = "2.12", default-features = false }
-tauri-build = "2.7"
-tauri-plugin = "2.7.1"
-tauri-utils = "2.10"
+tauri = { path = "../tauri/crates/tauri", default-features = false }
+tauri-build = { path = "../tauri/crates/tauri-build" }
+tauri-plugin = { path = "../tauri/crates/tauri-plugin" }
+tauri-utils = { path = "../tauri/crates/tauri-utils" }
 serde_json = "1"
 thiserror = "2"
 url = "2"
@@ -24,6 +24,18 @@ dunce = "1"
 specta = "^2.0.0-rc.16"
 glob = "0.3"
 zbus = "5.9"
+openharmony-ability-plugin-accessibility = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
+openharmony-ability-plugin-account = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
+openharmony-ability-plugin-autostart = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
+openharmony-ability-plugin-clipboard = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
+openharmony-ability-plugin-continuation = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
+openharmony-ability-plugin-deep-link = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
+openharmony-ability-plugin-files = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
+openharmony-ability-plugin-global-shortcut = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
+openharmony-ability-plugin-screenshot = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
+openharmony-ability-plugin-updater = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
+openharmony-ability-plugin-url = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
+openharmony-ability-plugin-window = { git = "https://github.com/harmony-contrib/openharmony-ability", branch = "codex/complete-platform-capabilities" }
 
 [workspace.package]
 edition = "2024"
@@ -39,3 +51,16 @@ codegen-units = 1
 lto = true
 incremental = false
 opt-level = "s"
+
+[patch.crates-io]
+tauri = { path = "../tauri/crates/tauri" }
+tauri-build = { path = "../tauri/crates/tauri-build" }
+tauri-utils = { path = "../tauri/crates/tauri-utils" }
+tauri-runtime = { path = "../tauri/crates/tauri-runtime" }
+tauri-runtime-wry = { path = "../tauri/crates/tauri-runtime-wry" }
+tauri-plugin = { path = "../tauri/crates/tauri-plugin" }
+wry = { path = "../wry" }
+tao = { path = "../tao" }
+muda = { path = "../muda" }
+tray-icon = { path = "../tray-icon" }
+cargo-mobile2 = { path = "../cargo-mobile2" }

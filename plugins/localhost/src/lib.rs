@@ -117,13 +117,44 @@ impl Builder {
     /// to send a response for a request.
     pub fn build<R: Runtime>(mut self) -> TauriPlugin<R> {
         let port = self.port;
+        #[cfg(target_env = "ohos")]
+        let host = self.host;
+        #[cfg(not(target_env = "ohos"))]
         let host = self.host.unwrap_or("localhost".to_string());
         let on_request = self.on_request.take();
 
         PluginBuilder::new("localhost")
             .setup(move |app, _api| {
                 let asset_resolver = app.asset_resolver();
+
+                #[cfg(target_env = "ohos")]
+                if let Some(h) = host.as_deref() {
+                    if h != "localhost" && h != "127.0.0.1" {
+                        log::warn!(
+                            "[localhost plugin] OHOS serves from 127.0.0.1 only; ignoring custom host `{}`",
+                            h
+                        );
+                    }
+                }
+                #[cfg(target_env = "ohos")]
+                let bind_addr = format!("127.0.0.1:{}", port);
+                #[cfg(target_env = "ohos")]
+                let server = match Server::http(&bind_addr) {
+                    Ok(s) => {
+                        log::info!("[localhost plugin] listening on {}", bind_addr);
+                        s
+                    }
+                    Err(e) => {
+                        return Err(format!(
+                            "[localhost plugin] failed to bind {}: {}",
+                            bind_addr, e
+                        )
+                        .into());
+                    }
+                };
+
                 std::thread::spawn(move || {
+                    #[cfg(not(target_env = "ohos"))]
                     let server =
                         Server::http(format!("{host}:{port}")).expect("Unable to spawn server");
                     for req in server.incoming_requests() {
@@ -152,6 +183,20 @@ impl Builder {
                             response
                                 .headers
                                 .insert("Cache-Control".into(), "no-cache".into());
+
+                            #[cfg(target_env = "ohos")]
+                            {
+                                response
+                                    .headers
+                                    .insert("Access-Control-Allow-Origin".into(), "*".into());
+                                response.headers.insert(
+                                    "Access-Control-Allow-Methods".into(),
+                                    "GET, POST, PUT, DELETE, OPTIONS".into(),
+                                );
+                                response
+                                    .headers
+                                    .insert("Access-Control-Allow-Headers".into(), "*".into());
+                            }
 
                             if let Some(on_request) = &on_request {
                                 on_request(&request, &mut response);

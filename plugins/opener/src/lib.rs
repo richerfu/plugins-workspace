@@ -15,7 +15,7 @@ use std::path::Path;
 
 use tauri::{Manager, Runtime, plugin::TauriPlugin};
 
-#[cfg(mobile)]
+#[cfg(all(mobile, not(target_env = "ohos")))]
 use tauri::plugin::PluginHandle;
 #[cfg(target_os = "android")]
 const PLUGIN_IDENTIFIER: &str = "app.tauri.opener";
@@ -38,15 +38,50 @@ type Result<T> = std::result::Result<T, Error>;
 pub use open::{open_path, open_url};
 pub use reveal_item_in_dir::{reveal_item_in_dir, reveal_items_in_dir};
 
+#[cfg(target_env = "ohos")]
+pub(crate) fn ensure_url_bridge_plugin(
+    ohos_app: &tauri::ohos::openharmony_ability::OpenHarmonyApp,
+) {
+    use openharmony_ability_plugin_url::UrlBridgePlugin;
+
+    match ohos_app.registered_plugin::<UrlBridgePlugin>() {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            if let Err(e) = ohos_app.register_plugin(UrlBridgePlugin) {
+                log::error!("[opener] failed to register UrlBridgePlugin: {}", e);
+            }
+        }
+        Err(e) => {
+            log::error!(
+                "[opener] failed to inspect UrlBridgePlugin registration: {}",
+                e
+            );
+        }
+    }
+}
+
+/// Clones the global OpenHarmony app handle set by the tauri runtime,
+/// or fails when the plugin is used before the app is initialized.
+#[cfg(target_env = "ohos")]
+pub(crate) fn ohos_app() -> crate::Result<tauri::ohos::openharmony_ability::OpenHarmonyApp> {
+    let app = tauri::ohos::APP
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().cloned())
+        .ok_or_else(|| crate::Error::OpenharmonyAbility("OHOS APP not initialized".to_string()))?;
+    ensure_url_bridge_plugin(&app);
+    Ok(app)
+}
+
 /// Access to the opener APIs, managed by the plugin as app state.
 ///
 /// Obtain an instance via [`OpenerExt::opener`].
 pub struct Opener<R: Runtime> {
     // we use `fn() -> R` to silence the unused generic error
     // while keeping this struct `Send + Sync` without requiring `R` to be
-    #[cfg(not(mobile))]
+    #[cfg(any(not(mobile), target_env = "ohos"))]
     _marker: std::marker::PhantomData<fn() -> R>,
-    #[cfg(mobile)]
+    #[cfg(all(mobile, not(target_env = "ohos")))]
     mobile_plugin_handle: PluginHandle<R>,
     require_literal_leading_dot: Option<bool>,
 }
@@ -70,12 +105,24 @@ impl<R: Runtime> Opener<R> {
     /// ## Platform-specific:
     ///
     /// - **Android / iOS**: Always opens using default program, unless `with` is provided as "inAppBrowser".
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     pub fn open_url(&self, url: impl Into<String>, with: Option<impl Into<String>>) -> Result<()> {
         crate::open::open(
             url.into(),
             with.map(Into::into).filter(|with| with != "inAppBrowser"),
         )
+    }
+
+    /// Open a url with the system default application on OpenHarmony.
+    ///
+    /// OHOS: async — routed through the openharmony-ability bridge.
+    #[cfg(target_env = "ohos")]
+    pub async fn open_url(
+        &self,
+        url: impl Into<String>,
+        with: Option<impl Into<String>>,
+    ) -> Result<()> {
+        crate::open::open_url(url.into(), with.map(Into::into)).await
     }
 
     /// Open a url with a default or specific program.
@@ -96,7 +143,7 @@ impl<R: Runtime> Opener<R> {
     /// ## Platform-specific:
     ///
     /// - **Android / iOS**: Always opens using default program, unless `with` is provided as "inAppBrowser".
-    #[cfg(mobile)]
+    #[cfg(all(mobile, not(target_env = "ohos")))]
     pub fn open_url(&self, url: impl Into<String>, with: Option<impl Into<String>>) -> Result<()> {
         self.mobile_plugin_handle
             .run_mobile_plugin(
@@ -124,7 +171,7 @@ impl<R: Runtime> Opener<R> {
     /// ## Platform-specific:
     ///
     /// - **Android / iOS**: Always opens using default program.
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     pub fn open_path(
         &self,
         path: impl Into<String>,
@@ -134,6 +181,18 @@ impl<R: Runtime> Opener<R> {
             path.into(),
             with.map(Into::into).filter(|with| with != "inAppBrowser"),
         )
+    }
+
+    /// Open a path with the system default application on OpenHarmony.
+    ///
+    /// OHOS: async — routed through the openharmony-ability bridge.
+    #[cfg(target_env = "ohos")]
+    pub async fn open_path(
+        &self,
+        path: impl Into<String>,
+        with: Option<impl Into<String>>,
+    ) -> Result<()> {
+        crate::open::open_path(path.into(), with.map(Into::into)).await
     }
 
     /// Open a path with a default or specific program.
@@ -154,7 +213,7 @@ impl<R: Runtime> Opener<R> {
     /// ## Platform-specific:
     ///
     /// - **Android / iOS**: Always opens using default program.
-    #[cfg(mobile)]
+    #[cfg(all(mobile, not(target_env = "ohos")))]
     pub fn open_path(
         &self,
         path: impl Into<String>,
@@ -170,8 +229,17 @@ impl<R: Runtime> Opener<R> {
     /// ## Platform-specific:
     ///
     /// - **Android / iOS:** Unsupported, returns [`Error::UnsupportedPlatform`].
+    #[cfg(not(target_env = "ohos"))]
     pub fn reveal_item_in_dir<P: AsRef<Path>>(&self, p: P) -> Result<()> {
         reveal_item_in_dir(p)
+    }
+
+    /// Reveal a path in the system's default explorer on OpenHarmony.
+    ///
+    /// OHOS: async — routed through the openharmony-ability bridge.
+    #[cfg(target_env = "ohos")]
+    pub async fn reveal_item_in_dir<P: AsRef<Path>>(&self, p: P) -> Result<()> {
+        reveal_item_in_dir(p).await
     }
 
     /// Reveal multiple paths in the system's default explorer. See [`reveal_items_in_dir`] for details.
@@ -179,12 +247,25 @@ impl<R: Runtime> Opener<R> {
     /// ## Platform-specific:
     ///
     /// - **Android / iOS:** Unsupported, returns [`Error::UnsupportedPlatform`].
+    #[cfg(not(target_env = "ohos"))]
     pub fn reveal_items_in_dir<I, P>(&self, paths: I) -> Result<()>
     where
         I: IntoIterator<Item = P>,
         P: AsRef<Path>,
     {
         reveal_items_in_dir(paths)
+    }
+
+    /// Reveal multiple paths in the system's default explorer on OpenHarmony.
+    ///
+    /// OHOS: async — routed through the openharmony-ability bridge.
+    #[cfg(target_env = "ohos")]
+    pub async fn reveal_items_in_dir<I, P>(&self, paths: I) -> Result<()>
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<Path>,
+    {
+        reveal_items_in_dir(paths).await
     }
 }
 
@@ -237,11 +318,19 @@ impl Builder {
                 let handle = api.register_android_plugin(PLUGIN_IDENTIFIER, "OpenerPlugin")?;
                 #[cfg(target_os = "ios")]
                 let handle = api.register_ios_plugin(init_plugin_opener)?;
+                #[cfg(target_env = "ohos")]
+                {
+                    if let Ok(guard) = tauri::ohos::APP.lock() {
+                        if let Some(ohos_app) = guard.as_ref() {
+                            ensure_url_bridge_plugin(ohos_app);
+                        }
+                    }
+                }
 
                 app.manage(Opener {
-                    #[cfg(not(mobile))]
+                    #[cfg(any(not(mobile), target_env = "ohos"))]
                     _marker: std::marker::PhantomData::<fn() -> R>,
-                    #[cfg(mobile)]
+                    #[cfg(all(mobile, not(target_env = "ohos")))]
                     mobile_plugin_handle: handle,
                     require_literal_leading_dot: api
                         .config()

@@ -16,9 +16,9 @@ use crate::{
 #[derive(Serialize)]
 #[serde(untagged)]
 pub enum OpenResponse {
-    #[cfg(desktop)]
+    #[cfg(any(desktop, target_env = "ohos"))]
     Folders(Option<Vec<FilePath>>),
-    #[cfg(desktop)]
+    #[cfg(any(desktop, target_env = "ohos"))]
     Folder(Option<FilePath>),
     Files(Option<Vec<FilePath>>),
     File(Option<FilePath>),
@@ -85,7 +85,7 @@ pub struct SaveDialogOptions {
     can_create_directories: Option<bool>,
 }
 
-#[cfg(mobile)]
+#[cfg(all(mobile, not(target_env = "ohos")))]
 fn set_default_path<R: Runtime>(
     mut dialog_builder: FileDialogBuilder<R>,
     default_path: PathBuf,
@@ -96,7 +96,7 @@ fn set_default_path<R: Runtime>(
     dialog_builder
 }
 
-#[cfg(desktop)]
+#[cfg(any(desktop, target_env = "ohos"))]
 fn set_default_path<R: Runtime>(
     mut dialog_builder: FileDialogBuilder<R>,
     default_path: PathBuf,
@@ -129,6 +129,14 @@ pub(crate) async fn open<R: Runtime>(
     {
         dialog_builder = dialog_builder.set_parent(&window);
     }
+    #[cfg(target_env = "ohos")]
+    if let Some(id) = window
+        .app_handle()
+        .get_webview_window(window.label())
+        .and_then(|w| w.ohos_window_id())
+    {
+        dialog_builder = dialog_builder.ohos_parent_window_id(id);
+    }
     if let Some(title) = options.title {
         dialog_builder = dialog_builder.set_title(title);
     }
@@ -150,7 +158,7 @@ pub(crate) async fn open<R: Runtime>(
     }
 
     let res = if options.directory {
-        #[cfg(desktop)]
+        #[cfg(any(desktop, target_env = "ohos"))]
         {
             let tauri_scope = window.state::<tauri::scope::Scopes>();
 
@@ -182,7 +190,7 @@ pub(crate) async fn open<R: Runtime>(
                 OpenResponse::Folder(folder.map(|p| p.simplified()))
             }
         }
-        #[cfg(mobile)]
+        #[cfg(all(mobile, not(target_env = "ohos")))]
         return Err(crate::Error::FolderPickerNotImplemented);
     } else if options.multiple {
         let tauri_scope = window.state::<tauri::scope::Scopes>();
@@ -225,9 +233,17 @@ pub(crate) async fn save<R: Runtime>(
     options: SaveDialogOptions,
 ) -> Result<Option<FilePath>> {
     let mut dialog_builder = dialog.file();
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     {
         dialog_builder = dialog_builder.set_parent(&window);
+    }
+    #[cfg(target_env = "ohos")]
+    if let Some(id) = window
+        .app_handle()
+        .get_webview_window(window.label())
+        .and_then(|w| w.ohos_window_id())
+    {
+        dialog_builder = dialog_builder.ohos_parent_window_id(id);
     }
     if let Some(title) = options.title {
         dialog_builder = dialog_builder.set_title(title);
@@ -277,9 +293,17 @@ pub(crate) async fn message<R: Runtime>(
         builder = builder.title(title);
     }
 
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     {
         builder = builder.parent(&window);
+    }
+    #[cfg(target_env = "ohos")]
+    if let Some(id) = window
+        .app_handle()
+        .get_webview_window(window.label())
+        .and_then(|w| w.ohos_window_id())
+    {
+        builder = builder.ohos_parent_window_id(id);
     }
 
     if let Some(kind) = kind {

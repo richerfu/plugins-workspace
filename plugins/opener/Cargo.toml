@@ -20,6 +20,7 @@ linux = { level = "full", notes = "" }
 macos = { level = "full", notes = "" }
 android = { level = "partial", notes = "Only allows to open URLs via `open`" }
 ios = { level = "partial", notes = "Only allows to open URLs via `open`" }
+openharmony = { level = "partial", notes = "Opens URLs/paths with the system default application only (`with`/`inAppBrowser` unsupported); reveal opens the first item's parent directory in the Huawei file manager (`com.huawei.hmos.filemanager`) — see README for limitations." }
 
 
 [build-dependencies]
@@ -35,7 +36,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tauri = { workspace = true }
 thiserror = { workspace = true }
-open = { version = "5", features = ["shellexecute-on-windows"] }
 glob = { workspace = true }
 dunce = { workspace = true }
 
@@ -50,7 +50,7 @@ features = [
   "Win32_Storage_FileSystem",
 ]
 
-[target."cfg(any(target_os = \"linux\", target_os = \"dragonfly\", target_os = \"freebsd\", target_os = \"netbsd\", target_os = \"openbsd\"))".dependencies]
+[target."cfg(all(any(target_os = \"linux\", target_os = \"dragonfly\", target_os = \"freebsd\", target_os = \"netbsd\", target_os = \"openbsd\"), not(target_env = \"ohos\")))".dependencies]
 zbus = { workspace = true }
 url = { workspace = true }
 
@@ -66,3 +66,11 @@ features = ["std", "NSURL", "NSArray", "NSString"]
 
 [target.'cfg(target_os = "ios")'.dependencies]
 tauri = { workspace = true, features = ["wry"] }
+
+[target.'cfg(not(target_env = "ohos"))'.dependencies]
+open = { version = "5", features = ["shellexecute-on-windows"] }
+
+[target.'cfg(target_env = "ohos")'.dependencies]
+openharmony-ability-plugin-url = { workspace = true }
+url = { workspace = true }
+log = { workspace = true }

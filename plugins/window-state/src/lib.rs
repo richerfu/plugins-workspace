@@ -13,19 +13,19 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use tauri::{
-    AppHandle, Manager, Monitor, PhysicalPosition, PhysicalSize, RunEvent, Runtime, WebviewWindow,
-    Window, WindowEvent,
+    AppHandle, Manager, Monitor, PhysicalPosition, PhysicalSize, Runtime, WebviewWindow, Window,
+    WindowEvent,
     plugin::{Builder as PluginBuilder, TauriPlugin},
 };
 
 use std::{
     collections::{HashMap, HashSet},
-    fs::create_dir_all,
     io::BufReader,
     sync::{Arc, Mutex},
 };
 
 mod cmd;
+mod ohos_ops;
 
 type LabelMapperFn = dyn Fn(&str) -> &str + Send + Sync;
 type FilterCallbackFn = dyn Fn(&str) -> bool + Send + Sync;
@@ -85,9 +85,12 @@ struct PluginState {
     pub(crate) state_flags: StateFlags,
     filename: String,
     map_label: Option<Box<LabelMapperFn>>,
+    denylist: HashSet<String>,
+    filter_callback: Option<Box<FilterCallbackFn>>,
+    skip_initial_state: HashSet<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 struct WindowState {
     width: u32,
     height: u32,
@@ -135,31 +138,7 @@ pub trait AppHandleExt {
 
 impl<R: Runtime> AppHandleExt for tauri::AppHandle<R> {
     fn save_window_state(&self, flags: StateFlags) -> Result<()> {
-        let app_dir = self.path().app_config_dir()?;
-        let plugin_state = self.state::<PluginState>();
-        let state_path = app_dir.join(&plugin_state.filename);
-        let windows = self.webview_windows();
-        let cache = self.state::<WindowStateCache>();
-        let mut state = cache.0.lock().unwrap();
-
-        for (label, s) in state.iter_mut() {
-            let window = if let Some(map) = &plugin_state.map_label {
-                windows
-                    .iter()
-                    .find_map(|(l, window)| (map(l) == label).then_some(window))
-            } else {
-                windows.get(label)
-            };
-
-            if let Some(window) = window {
-                window.update_state(s, flags)?;
-            }
-        }
-
-        create_dir_all(app_dir)?;
-        std::fs::write(state_path, serde_json::to_vec_pretty(&*state)?)?;
-
-        Ok(())
+        ohos_ops::save_window_state(self, flags)
     }
 
     fn filename(&self) -> String {
@@ -190,94 +169,8 @@ impl<R: Runtime> WindowExt for Window<R> {
 
         let restoring_window_state = self.state::<RestoringWindowState>();
         let _restoring_window_lock = restoring_window_state.0.lock().unwrap();
-        let cache = self.state::<WindowStateCache>();
-        let mut c = cache.0.lock().unwrap();
 
-        let mut should_show = true;
-
-        if let Some(state) = c
-            .get(label)
-            .filter(|state| state != &&WindowState::default())
-        {
-            if flags.contains(StateFlags::DECORATIONS) {
-                self.set_decorations(state.decorated)?;
-            }
-
-            if flags.contains(StateFlags::POSITION) {
-                // a maximized window's x and y are the monitor's corner, so it is
-                // placed where it was before it was maximized
-                let position = if state.maximized {
-                    PhysicalPosition::new(state.prev_x, state.prev_y)
-                } else {
-                    PhysicalPosition::new(state.x, state.y)
-                };
-                let size = (state.width, state.height).into();
-                // restore position to saved value if saved monitor exists
-                // otherwise, let the OS decide where to place the window
-                for m in self.available_monitors()? {
-                    if m.intersects(position, size) {
-                        self.set_position(position)?;
-                        break;
-                    }
-                }
-            }
-
-            if flags.contains(StateFlags::SIZE) {
-                self.set_size(PhysicalSize {
-                    width: state.width,
-                    height: state.height,
-                })?;
-            }
-
-            if flags.contains(StateFlags::MAXIMIZED) && state.maximized {
-                self.maximize()?;
-            }
-
-            if flags.contains(StateFlags::FULLSCREEN) {
-                self.set_fullscreen(state.fullscreen)?;
-            }
-
-            should_show = state.visible;
-        } else {
-            let mut metadata = WindowState::default();
-
-            if flags.contains(StateFlags::SIZE) {
-                let size = restorable_size(self)?;
-                metadata.width = size.width;
-                metadata.height = size.height;
-            }
-
-            if flags.contains(StateFlags::POSITION) {
-                let pos = self.outer_position()?;
-                metadata.x = pos.x;
-                metadata.y = pos.y;
-            }
-
-            if flags.contains(StateFlags::MAXIMIZED) {
-                metadata.maximized = self.is_maximized()?;
-            }
-
-            if flags.contains(StateFlags::VISIBLE) {
-                metadata.visible = self.is_visible()?;
-            }
-
-            if flags.contains(StateFlags::DECORATIONS) {
-                metadata.decorated = self.is_decorated()?;
-            }
-
-            if flags.contains(StateFlags::FULLSCREEN) {
-                metadata.fullscreen = self.is_fullscreen()?;
-            }
-
-            c.insert(label.into(), metadata);
-        }
-
-        if flags.contains(StateFlags::VISIBLE) && should_show {
-            self.show()?;
-            self.set_focus()?;
-        }
-
-        Ok(())
+        ohos_ops::restore_state(self, &plugin_state, label, flags)
     }
 }
 
@@ -314,11 +207,8 @@ impl<R: Runtime> WindowExtInternal for WebviewWindow<R> {
 
 impl<R: Runtime> WindowExtInternal for Window<R> {
     fn update_state(&self, state: &mut WindowState, flags: StateFlags) -> tauri::Result<()> {
-        let is_maximized = flags
-            .intersects(StateFlags::MAXIMIZED | StateFlags::POSITION | StateFlags::SIZE)
-            && self.is_maximized()?;
-        let is_minimized =
-            flags.intersects(StateFlags::POSITION | StateFlags::SIZE) && self.is_minimized()?;
+        let is_maximized = ohos_ops::update_state_is_maximized(self, flags)?;
+        let is_minimized = ohos_ops::update_state_is_minimized(self, flags)?;
 
         if flags.contains(StateFlags::MAXIMIZED) {
             state.maximized = is_maximized;
@@ -429,6 +319,9 @@ impl Builder {
         let state_flags = self.state_flags;
         let filename = self.filename.unwrap_or_else(|| DEFAULT_FILENAME.into());
         let map_label = self.map_label;
+        let denylist = self.denylist;
+        let filter_callback = self.filter_callback;
+        let skip_initial_state = self.skip_initial_state;
 
         PluginBuilder::new("window-state")
             .invoke_handler(tauri::generate_handler![
@@ -444,6 +337,9 @@ impl Builder {
                     state_flags,
                     filename,
                     map_label,
+                    denylist,
+                    filter_callback,
+                    skip_initial_state,
                 });
                 Ok(())
             })
@@ -456,19 +352,19 @@ impl Builder {
                     .unwrap_or_else(|| window.label());
 
                 // Check deny list names
-                if self.denylist.contains(label) {
+                if plugin_state.denylist.contains(label) {
                     return;
                 }
 
                 // Check deny list callback
-                if let Some(filter_callback) = &self.filter_callback {
+                if let Some(filter_callback) = &plugin_state.filter_callback {
                     // Don't save the state if the callback returns false
                     if !filter_callback(label) {
                         return;
                     }
                 }
 
-                if !self.skip_initial_state.contains(label) {
+                if !plugin_state.skip_initial_state.contains(label) {
                     let _ = window.restore_state(state_flags);
                 }
 
@@ -501,16 +397,17 @@ impl Builder {
                                 .state::<RestoringWindowState>()
                                 .0
                                 .try_lock()
-                                .is_ok()
-                            && !window_clone.is_minimized().unwrap_or_default() =>
+                                .is_ok() =>
                     {
-                        let mut c = cache.lock().unwrap();
-                        if let Some(state) = c.get_mut(&label) {
-                            state.prev_x = state.x;
-                            state.prev_y = state.y;
+                        if !ohos_ops::moved_is_minimized(&window_clone) {
+                            let mut c = cache.lock().unwrap();
+                            if let Some(state) = c.get_mut(&label) {
+                                state.prev_x = state.x;
+                                state.prev_y = state.y;
 
-                            state.x = position.x;
-                            state.y = position.y;
+                                state.x = position.x;
+                                state.y = position.y;
+                            }
                         }
                     }
                     WindowEvent::Resized(size)
@@ -521,17 +418,7 @@ impl Builder {
                                 .try_lock()
                                 .is_ok() =>
                     {
-                        // TODO: Remove once https://github.com/tauri-apps/tauri/issues/5812 is resolved.
-                        let is_maximized = if cfg!(target_os = "macos")
-                            && (!window_clone.is_decorated().unwrap_or_default()
-                                || !window_clone.is_resizable().unwrap_or_default())
-                        {
-                            false
-                        } else {
-                            window_clone.is_maximized().unwrap_or_default()
-                        };
-
-                        if !window_clone.is_minimized().unwrap_or_default() && !is_maximized {
+                        if ohos_ops::resized_should_save(&window_clone) {
                             let mut c = cache.lock().unwrap();
                             if let Some(state) = c.get_mut(&label) {
                                 // the event carries the inner size, which is not what
@@ -547,9 +434,7 @@ impl Builder {
                 });
             })
             .on_event(move |app, event| {
-                if let RunEvent::Exit = event {
-                    let _ = app.save_window_state(state_flags);
-                }
+                ohos_ops::on_event(app, event, state_flags);
             })
             .build()
     }

@@ -19,7 +19,7 @@ pub enum Error {
     /// either because the arguments could not be serialized, the response could not be
     /// deserialized or the native side rejected the call (e.g. NFC is unavailable
     /// or the tag could not be read or written).
-    #[cfg(mobile)]
+    #[cfg(any(mobile, target_env = "ohos"))]
     #[error(transparent)]
     PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),
 }

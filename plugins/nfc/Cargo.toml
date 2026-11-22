@@ -1,7 +1,7 @@
 [package]
 name = "tauri-plugin-nfc"
 version = "2.4.2"
-description = "Read and write NFC tags on Android and iOS."
+description = "Read and write NFC tags on Android, iOS and OpenHarmony."
 edition = { workspace = true }
 rust-version = { workspace = true }
 authors = { workspace = true }
@@ -19,6 +19,7 @@ linux = { level = "none", notes = "" }
 macos = { level = "none", notes = "" }
 android = { level = "full", notes = "" }
 ios = { level = "full", notes = "" }
+openharmony = { level = "partial", notes = "is_available/scan/write via NFC readerMode foreground dispatch; ohos.permission.NFC_TAG is declared in the plugin HAR; readerMode is unregistered on background/destroy." }
 
 [build-dependencies]
 tauri-plugin = { workspace = true, features = ["build"] }
@@ -31,5 +32,5 @@ log = { workspace = true }
 thiserror = { workspace = true }
 serde_repr = "0.1"
 
-[target.'cfg(target_os = "ios")'.dependencies]
+[target.'cfg(any(target_os = "ios", target_env = "ohos"))'.dependencies]
 tauri = { workspace = true, features = ["wry"] }

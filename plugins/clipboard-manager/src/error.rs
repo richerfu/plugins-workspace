@@ -11,7 +11,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Forwarding a request to, or receiving a response from, the mobile plugin failed.
-    #[cfg(mobile)]
+    #[cfg(all(mobile, not(target_env = "ohos")))]
     #[error(transparent)]
     PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),
     /// The underlying clipboard operation failed, or the operation is not supported on this platform.
@@ -31,7 +31,7 @@ impl Serialize for Error {
     }
 }
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 impl From<arboard::Error> for Error {
     fn from(error: arboard::Error) -> Self {
         Self::Clipboard(error.to_string())

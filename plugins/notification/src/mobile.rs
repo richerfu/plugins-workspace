@@ -19,8 +19,11 @@ const PLUGIN_IDENTIFIER: &str = "app.tauri.notification";
 #[cfg(target_os = "ios")]
 tauri::ios_plugin_binding!(init_plugin_notification);
 
-/// Initializes the mobile implementation of the notification APIs by registering
-/// the Kotlin (Android) or Swift (iOS) plugin class.
+#[cfg(target_env = "ohos")]
+const PLUGIN_IDENTIFIER: &str = "@tauri/plugin-notification";
+
+/// Initializes the mobile/OpenHarmony implementation of the notification APIs by registering
+/// the Kotlin (Android), Swift (iOS) or ArkTS (OpenHarmony) plugin class.
 pub fn init<R: Runtime, C: DeserializeOwned>(
     _app: &AppHandle<R>,
     api: PluginApi<R, C>,
@@ -29,6 +32,8 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
     let handle = api.register_android_plugin(PLUGIN_IDENTIFIER, "NotificationPlugin")?;
     #[cfg(target_os = "ios")]
     let handle = api.register_ios_plugin(init_plugin_notification)?;
+    #[cfg(target_env = "ohos")]
+    let handle = api.register_ohos_plugin(PLUGIN_IDENTIFIER, "NotificationPlugin")?;
     Ok(Notification(handle))
 }
 
@@ -199,8 +204,8 @@ impl<R: Runtime> Notification<R> {
     ///
     /// Notifications that reference a channel that does not exist are not delivered.
     ///
-    /// Only available on Android.
-    #[cfg(target_os = "android")]
+    /// Only available on Android and OpenHarmony.
+    #[cfg(any(target_os = "android", target_env = "ohos"))]
     pub fn create_channel(&self, channel: Channel) -> crate::Result<()> {
         self.0
             .run_mobile_plugin("createChannel", channel)
@@ -209,8 +214,8 @@ impl<R: Runtime> Notification<R> {
 
     /// Deletes the notification channel with the given identifier.
     ///
-    /// Only available on Android.
-    #[cfg(target_os = "android")]
+    /// Only available on Android and OpenHarmony.
+    #[cfg(any(target_os = "android", target_env = "ohos"))]
     pub fn delete_channel(&self, id: impl Into<String>) -> crate::Result<()> {
         let mut args = HashMap::new();
         args.insert("id", id.into());
@@ -219,14 +224,35 @@ impl<R: Runtime> Notification<R> {
             .map_err(Into::into)
     }
 
-    /// Lists the notification channels that are currently registered for the app.
-    ///
-    /// Only available on Android.
-    #[cfg(target_os = "android")]
-    pub fn list_channels(&self) -> crate::Result<Vec<Channel>> {
+    /// Returns raw JSON from `listChannels` on OpenHarmony.
+    #[cfg(target_env = "ohos")]
+    pub fn list_channels_raw(&self) -> crate::Result<serde_json::Value> {
         self.0
             .run_mobile_plugin("listChannels", ())
             .map_err(Into::into)
+    }
+
+    /// Lists the notification channels that are currently registered for the app.
+    ///
+    /// Only available on Android and OpenHarmony.
+    #[cfg(any(target_os = "android", target_env = "ohos"))]
+    pub fn list_channels(&self) -> crate::Result<Vec<Channel>> {
+        #[cfg(target_os = "android")]
+        {
+            self.0
+                .run_mobile_plugin("listChannels", ())
+                .map_err(Into::into)
+        }
+        #[cfg(target_env = "ohos")]
+        {
+            let raw = self.list_channels_raw()?;
+            serde_json::from_value(raw).map_err(|e| {
+                crate::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e.to_string(),
+                ))
+            })
+        }
     }
 }
 

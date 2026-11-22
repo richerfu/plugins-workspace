@@ -1,7 +1,7 @@
 [package]
 name = "tauri-plugin-biometric"
 version = "2.5.0"
-description = "Prompt the user for biometric authentication on Android, iOS, and macOS."
+description = "Prompt the user for biometric authentication on Android, iOS, macOS, and OpenHarmony."
 edition = { workspace = true }
 rust-version = { workspace = true }
 authors = { workspace = true }
@@ -19,6 +19,7 @@ linux = { level = "none", notes = "" }
 macos = { level = "full", notes = "" }
 android = { level = "full", notes = "" }
 ios = { level = "full", notes = "" }
+openharmony = { level = "partial", notes = "status + authenticate via the system userAuth widget; reason/title/cancelTitle/allowDeviceCredential honored (see README)" }
 
 [build-dependencies]
 tauri-plugin = { workspace = true, features = ["build"] }
@@ -45,5 +46,5 @@ objc2-local-authentication = { version = "0.3", default-features = false, featur
   "block2",
 ] }
 
-[target.'cfg(target_os = "ios")'.dependencies]
+[target.'cfg(any(target_os = "ios", target_env = "ohos"))'.dependencies]
 tauri = { workspace = true, features = ["wry"] }

@@ -26,6 +26,7 @@ linux = { level = "full", notes = "" }
 macos = { level = "full", notes = "" }
 android = { level = "full", notes = "" }
 ios = { level = "full", notes = "" }
+openharmony = { level = "partial", notes = "Text/long/multiline notifications, permissions, channels (emulated over 4 system slot types), active() via getActiveNotifications, action buttons with actionPerformed click events (buttons are text-only; requires EntryAbility wiring from tauri-cli open-harmony template). Scheduling publishes reminderAgentManager system reminders (at, interval, every day/week/month/year) and requires the AGC agent-reminder entitlement and PUBLISH_AGENT_REMINDER permission." }
 
 [build-dependencies]
 tauri-plugin = { workspace = true, features = ["build"] }
@@ -44,13 +45,13 @@ time = { version = "0.3", features = ["serde", "parsing", "formatting"] }
 url = { version = "2", features = ["serde"] }
 serde_repr = "0.1"
 
-[target.'cfg(target_os = "ios")'.dependencies]
+[target.'cfg(any(target_os = "ios", target_env = "ohos"))'.dependencies]
 tauri = { workspace = true, features = ["wry"] }
 
-[target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\", target_os = \"dragonfly\", target_os = \"freebsd\", target_os = \"openbsd\", target_os = \"netbsd\"))".dependencies]
+[target."cfg(all(any(target_os = \"macos\", windows, target_os = \"linux\", target_os = \"dragonfly\", target_os = \"freebsd\", target_os = \"openbsd\", target_os = \"netbsd\"), not(target_env = \"ohos\")))".dependencies]
 notify-rust = "4.18"
 
-[target."cfg(any(target_os = \"linux\", target_os = \"dragonfly\", target_os = \"freebsd\", target_os = \"openbsd\", target_os = \"netbsd\"))".dependencies]
+[target."cfg(all(any(target_os = \"linux\", target_os = \"dragonfly\", target_os = \"freebsd\", target_os = \"openbsd\", target_os = \"netbsd\"), not(target_env = \"ohos\")))".dependencies]
 zbus = "5"
 
 [features]

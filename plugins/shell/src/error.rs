@@ -12,7 +12,7 @@ pub enum Error {
     /// Failed to invoke the mobile plugin implementation.
     ///
     /// Only available on mobile.
-    #[cfg(mobile)]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     #[error(transparent)]
     PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),
     /// I/O error, usually raised when spawning a process or reading its output.
@@ -44,6 +44,14 @@ pub enum Error {
     /// Utf8 error.
     #[error(transparent)]
     Utf8(#[from] std::string::FromUtf8Error),
+    /// OpenHarmony ability bridge error.
+    #[cfg(target_env = "ohos")]
+    #[error("OpenHarmony ability error: {0}")]
+    OpenharmonyAbility(String),
+    /// Path could not be converted to a `file://` URI on OpenHarmony.
+    #[cfg(target_env = "ohos")]
+    #[error("invalid path: {0}")]
+    InvalidPath(String),
 }
 
 impl Serialize for Error {

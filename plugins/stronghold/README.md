@@ -9,6 +9,7 @@ Store secrets and keys using the [IOTA Stronghold](https://github.com/iotaledger
 | macOS    | ✓         |
 | Android  | ✓         |
 | iOS      | ✓         |
+| OpenHarmony | partial (requires prebuilt `libsodium` + OHOS-compatible `stronghold-runtime`) |
 
 ## Install
 
@@ -141,6 +142,15 @@ await stronghold.save();
 
 await store.remove(key);
 ```
+
+## OHOS Build
+
+Cross-compiling Stronghold to `aarch64-unknown-linux-ohos` requires:
+
+1. A prebuilt static `libsodium` for `aarch64-unknown-linux-ohos` pointed to via `SODIUM_LIB_DIR` (otherwise `libsodium-sys-stable` attempts to invoke `./configure`).
+2. An OHOS-compatible `stronghold-runtime` (the upstream crates.io `stronghold-runtime` release pulls in `nix` / Linux-specific assumptions on `target_os = "linux"`).
+
+Relative snapshot paths passed to `initialize` are resolved against `BaseDirectory::AppData` on OHOS because the process CWD is `/`.
 
 ## Contributing
 

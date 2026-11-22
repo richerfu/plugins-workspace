@@ -9,6 +9,7 @@ In-app updates for Tauri applications.
 | macOS    | ✓         |
 | Android  | x         |
 | iOS      | x         |
+| OpenHarmony | ✓ (AppGallery) |
 
 ## Install
 
@@ -75,6 +76,15 @@ if (update) {
 ```
 
 Note that for these APIs to work you have to properly configure the updater first and generate updater artifacts. Please refer to the [guide on our website](https://v2.tauri.app/plugin/updater/) for this.
+
+## OpenHarmony (OHOS) Notes
+
+On OpenHarmony, updates are hosted by Huawei AppGallery — the desktop HTTP/manifest updater commands (`check`, `download`, `install`, `downloadAndInstall`) are not registered. Instead, two dedicated AppGallery APIs are provided:
+
+| API | Behavior |
+| --- | -------- |
+| `checkAppGalleryUpdate()` | Pure query via `updateManager.checkAppUpdate()`. No dialog shown. Returns `null` if no update, or `{ available, currentVersion, version }`. |
+| `showAppGalleryUpdateDialog()` | Opens the system `updateManager.showUpdateDialog()` dialog, which drives the user-confirmed download and install flow. |
 
 ## Contributing
 

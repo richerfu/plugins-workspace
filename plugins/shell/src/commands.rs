@@ -326,5 +326,12 @@ pub async fn open<R: Runtime>(
     path: String,
     with: Option<Program>,
 ) -> crate::Result<()> {
-    crate::open::open(Some(&shell.open_scope), path, with)
+    #[cfg(not(target_env = "ohos"))]
+    {
+        crate::open::open(Some(&shell.open_scope), path, with)
+    }
+    #[cfg(target_env = "ohos")]
+    {
+        crate::open::open(Some(&shell.open_scope), path, with).await
+    }
 }

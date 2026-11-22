@@ -38,9 +38,9 @@ pub(crate) async fn notify<R: Runtime>(
     builder.show()
 }
 
-// The commands below are implemented by the Kotlin and Swift plugins on mobile.
+// The commands below are implemented by the Kotlin, Swift and ArkTS plugins on mobile/OpenHarmony.
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 #[command]
 pub(crate) async fn register_action_types<R: Runtime>(
     _app: AppHandle<R>,
@@ -51,13 +51,13 @@ pub(crate) async fn register_action_types<R: Runtime>(
 }
 
 /// A notification of `remove_active`, as the JavaScript API sends it.
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 #[derive(serde::Deserialize)]
 pub(crate) struct ActiveId {
     id: i32,
 }
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 #[command]
 pub(crate) async fn remove_active<R: Runtime>(
     _app: AppHandle<R>,
@@ -72,7 +72,7 @@ pub(crate) async fn remove_active<R: Runtime>(
     }
 }
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 #[command]
 pub(crate) fn register_listener<R: Runtime>(
     webview: tauri::Webview<R>,
@@ -83,7 +83,7 @@ pub(crate) fn register_listener<R: Runtime>(
     notification.register_listener(event, handler, &webview);
 }
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 #[command]
 pub(crate) fn remove_listener<R: Runtime>(
     _app: AppHandle<R>,

@@ -26,6 +26,7 @@ linux = { level = "full", notes = "" }
 macos = { level = "partial", notes = "Deep links must be registered in config. Dynamic registration at runtime is not supported." }
 android = { level = "partial", notes = "Deep links must be registered in config. Dynamic registration at runtime is not supported." }
 ios = { level = "partial", notes = "Deep links must be registered in config. Dynamic registration at runtime is not supported." }
+openharmony = { level = "partial", notes = "Runtime events + cold-start get_current; register/unregister/is_registered return an error — schemes are statically declared in module.json5." }
 
 [build-dependencies]
 serde = { workspace = true }
@@ -53,5 +54,8 @@ dunce = "1"
 windows-registry = "0.6"
 windows-result = "0.4"
 
-[target."cfg(target_os = \"linux\")".dependencies]
+[target."cfg(all(target_os = \"linux\", not(target_env = \"ohos\")))".dependencies]
 rust-ini = "0.21"
+
+[target.'cfg(target_env = "ohos")'.dependencies]
+openharmony-ability-plugin-deep-link = { workspace = true }

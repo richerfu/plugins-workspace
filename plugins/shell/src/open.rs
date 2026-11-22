@@ -69,6 +69,7 @@ impl<'de> Deserialize<'de> for Program {
 }
 
 impl Program {
+    #[cfg(not(target_env = "ohos"))]
     pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Open => "open",
@@ -118,6 +119,7 @@ impl Program {
 ///     Ok(())
 ///   });
 /// ```
+#[cfg(not(target_env = "ohos"))]
 #[deprecated(since = "2.1.0", note = "Use tauri-plugin-opener instead.")]
 pub fn open<P: AsRef<str>>(
     scope: Option<&OpenScope>,
@@ -134,5 +136,86 @@ pub fn open<P: AsRef<str>>(
             None => ::open::that_detached(path.as_ref()),
         }
         .map_err(Into::into)
+    }
+}
+
+/// OHOS variant of [`open`]: async — the path is scope-validated (when a scope
+/// is given, e.g. for JS calls) and then routed through the openharmony-ability
+/// URL bridge, which hands it to the system default application.
+///
+/// `'open with'` (the `with` program) is unsupported on OHOS and ignored —
+/// system default only, mirroring `tauri-plugin-opener`'s OHOS behavior.
+///
+/// Absolute URLs (`https://`, `mailto:`, `tel:`, ...) are forwarded via
+/// [`UrlExt::open_url`]; `file://` URIs and filesystem paths (canonicalized to
+/// `file://`) are routed via [`UrlExt::open_file`].
+#[cfg(target_env = "ohos")]
+#[deprecated(since = "2.1.0", note = "Use tauri-plugin-opener instead.")]
+pub async fn open<P: AsRef<str>>(
+    scope: Option<&OpenScope>,
+    path: P,
+    with: Option<Program>,
+) -> crate::Result<()> {
+    use openharmony_ability_plugin_url::UrlExt;
+
+    if with.is_some() {
+        log::debug!("shell.open: `with` program ignored on OHOS (system default handler only)");
+    }
+    let path = path.as_ref();
+    if let Some(scope) = scope {
+        scope.validate(path)?;
+    }
+    let uri = ohos_target_uri(path)?;
+    let ohos_app = crate::ohos_app()?;
+    let res = if uri.starts_with("file://") {
+        ohos_app.open_file(uri).await
+    } else {
+        ohos_app.open_url(uri).await
+    };
+    res.map_err(|e| crate::Error::OpenharmonyAbility(e.to_string()))?;
+    Ok(())
+}
+
+/// Discriminates a `shell open` argument between an absolute URL and a
+/// filesystem path, producing the URI handed to the OHOS opener bridge.
+#[cfg(target_env = "ohos")]
+fn ohos_target_uri(path: &str) -> crate::Result<String> {
+    match url::Url::parse(path) {
+        Ok(url) => Ok(url.to_string()),
+        Err(_) => {
+            let canon = std::fs::canonicalize(path)?;
+            url::Url::from_file_path(&canon)
+                .map(|u| u.to_string())
+                .map_err(|_| crate::Error::InvalidPath(path.to_string()))
+        }
+    }
+}
+
+#[cfg(all(test, target_env = "ohos"))]
+mod tests {
+    use super::ohos_target_uri;
+
+    #[test]
+    fn absolute_urls_pass_through() {
+        assert_eq!(
+            ohos_target_uri("https://tauri.app").unwrap(),
+            "https://tauri.app/"
+        );
+        assert_eq!(
+            ohos_target_uri("mailto:foo@bar.com").unwrap(),
+            "mailto:foo@bar.com"
+        );
+        assert_eq!(ohos_target_uri("tel:12345").unwrap(), "tel:12345");
+    }
+
+    #[test]
+    fn missing_relative_path_errors() {
+        assert!(ohos_target_uri("definitely-missing-file.abc").is_err());
+    }
+
+    #[test]
+    fn existing_absolute_path_maps_to_file_uri() {
+        let uri = ohos_target_uri("/proc/self").unwrap();
+        assert!(uri.starts_with("file://"), "unexpected uri: {uri}");
     }
 }

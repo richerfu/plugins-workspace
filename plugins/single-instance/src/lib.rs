@@ -15,16 +15,21 @@
 )]
 #![cfg(not(any(target_os = "android", target_os = "ios")))]
 
-use tauri::{AppHandle, Manager, Resource, ResourceId, Runtime, plugin::TauriPlugin};
+#[cfg(not(target_env = "ohos"))]
+use tauri::Resource;
+use tauri::{AppHandle, Manager, ResourceId, Runtime, plugin::TauriPlugin};
 
 #[cfg(target_os = "windows")]
 #[path = "platform_impl/windows.rs"]
 mod platform_impl;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 #[path = "platform_impl/linux.rs"]
 mod platform_impl;
 #[cfg(target_os = "macos")]
 #[path = "platform_impl/macos.rs"]
+mod platform_impl;
+#[cfg(target_env = "ohos")]
+#[path = "platform_impl/ohos.rs"]
 mod platform_impl;
 
 #[cfg(feature = "semver")]
@@ -74,6 +79,7 @@ struct InstanceLockId(ResourceId);
 /// Stores the platform lock in the app's resource table, which Tauri clears in
 /// [`AppHandle::cleanup_before_exit`], so the lock's [`Drop`] implementation releases it only once
 /// the app is really exiting.
+#[cfg(not(target_env = "ohos"))]
 pub(crate) fn manage_instance_lock<R: Runtime, M: Manager<R>>(manager: &M, lock: impl Resource) {
     let rid = manager.resources_table().add(lock);
     manager.manage(InstanceLockId(rid));
@@ -91,7 +97,7 @@ impl<R: Runtime> Default for Builder<R> {
     fn default() -> Self {
         Self {
             callback: Box::new(move |_app, _args, _| {
-                #[cfg(feature = "deep-link")]
+                #[cfg(all(feature = "deep-link", not(target_env = "ohos")))]
                 if let Some(deep_link) = _app.try_state::<tauri_plugin_deep_link::DeepLink<R>>() {
                     deep_link.handle_cli_arguments(_args.iter());
                 }
@@ -117,7 +123,7 @@ impl<R: Runtime> Builder<R> {
         mut f: F,
     ) -> Self {
         self.callback = Box::new(move |app, args, cwd| {
-            #[cfg(feature = "deep-link")]
+            #[cfg(all(feature = "deep-link", not(target_env = "ohos")))]
             if let Some(deep_link) = app.try_state::<tauri_plugin_deep_link::DeepLink<R>>() {
                 deep_link.handle_cli_arguments(args.iter());
             }
@@ -143,7 +149,7 @@ impl<R: Runtime> Builder<R> {
     pub fn build(self) -> TauriPlugin<R> {
         platform_impl::init(
             self.callback,
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
             self.dbus_id,
         )
     }

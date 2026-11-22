@@ -14,22 +14,22 @@ use tauri::{
     plugin::{Builder, TauriPlugin},
 };
 
-#[cfg(desktop)]
+#[cfg(any(desktop, target_env = "ohos"))]
 mod desktop;
-#[cfg(mobile)]
+#[cfg(all(mobile, not(target_env = "ohos")))]
 mod mobile;
 
 mod commands;
 mod error;
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 mod secret;
 
 pub use error::{Error, Result};
 
-#[cfg(desktop)]
+#[cfg(any(desktop, target_env = "ohos"))]
 pub use desktop::Clipboard;
-#[cfg(mobile)]
+#[cfg(all(mobile, not(target_env = "ohos")))]
 pub use mobile::Clipboard;
 
 /// Extensions to [`tauri::App`], [`tauri::AppHandle`], [`tauri::WebviewWindow`], [`tauri::Webview`] and [`tauri::Window`] to access the clipboard APIs.
@@ -57,15 +57,15 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::write_secret,
         ])
         .setup(|app, api| {
-            #[cfg(mobile)]
+            #[cfg(all(mobile, not(target_env = "ohos")))]
             let clipboard = mobile::init(app, api)?;
-            #[cfg(desktop)]
+            #[cfg(any(desktop, target_env = "ohos"))]
             let clipboard = desktop::init(app, api)?;
             app.manage(clipboard);
             Ok(())
         })
         .on_event(|_app, _event| {
-            #[cfg(desktop)]
+            #[cfg(any(desktop, target_env = "ohos"))]
             if let tauri::RunEvent::Exit = _event {
                 _app.clipboard().cleanup();
             }

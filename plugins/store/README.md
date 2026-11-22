@@ -9,6 +9,7 @@ Simple, persistent key-value store.
 | macOS    | ✓         |
 | Android  | ✓         |
 | iOS      | ✓         |
+| OpenHarmony | ✓      |
 
 ## Install
 
@@ -149,6 +150,10 @@ PRs accepted. Please make sure to read the Contributing Guide before making a pu
 </table>
 
 For the complete list of sponsors please visit our [website](https://tauri.app#sponsors) and [Open Collective](https://opencollective.com/tauri).
+
+## OpenHarmony (OHOS)
+
+On OHOS (`target_env = "ohos"`), the `RunEvent::Exit` and `Drop` save paths are hardened against main-thread appfreeze: the stores map read uses `try_read()` and each store save uses `save_or_skip()` (`try_lock` on `StoreInner`), skipping the flush with a warning if contended during exit. `load` runs disk reads inside `spawn_blocking`.
 
 ## License
 

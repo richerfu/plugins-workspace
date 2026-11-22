@@ -14,11 +14,11 @@
 )]
 
 use serde::Serialize;
-#[cfg(all(desktop, unix, not(target_os = "macos")))]
+#[cfg(all(desktop, unix, not(target_os = "macos"), not(target_env = "ohos")))]
 use std::fmt;
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 use tauri::AppHandle;
-#[cfg(mobile)]
+#[cfg(any(mobile, target_env = "ohos"))]
 use tauri::plugin::PluginHandle;
 use tauri::{
     Manager, Runtime,
@@ -28,38 +28,40 @@ use tauri::{
 pub use models::*;
 pub use tauri::plugin::PermissionState;
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 mod desktop;
-#[cfg(mobile)]
+#[cfg(any(mobile, target_env = "ohos"))]
 mod mobile;
 
 mod commands;
 mod error;
 mod models;
+#[cfg(target_env = "ohos")]
+mod ohos;
 
 pub use error::{Error, Result};
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 pub use desktop::Notification;
-#[cfg(mobile)]
+#[cfg(any(mobile, target_env = "ohos"))]
 pub use mobile::Notification;
 
 /// The notification builder.
 #[derive(Debug)]
 pub struct NotificationBuilder<R: Runtime> {
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     app: AppHandle<R>,
-    #[cfg(mobile)]
+    #[cfg(any(mobile, target_env = "ohos"))]
     handle: PluginHandle<R>,
     pub(crate) data: NotificationData,
-    #[cfg(all(desktop, unix, not(target_os = "macos")))]
+    #[cfg(all(desktop, unix, not(target_os = "macos"), not(target_env = "ohos")))]
     on_close: Option<OnClose>,
 }
 
-#[cfg(all(desktop, unix, not(target_os = "macos")))]
+#[cfg(all(desktop, unix, not(target_os = "macos"), not(target_env = "ohos")))]
 pub(crate) struct OnClose(Box<dyn FnOnce() + Send + 'static>);
 
-#[cfg(all(desktop, unix, not(target_os = "macos")))]
+#[cfg(all(desktop, unix, not(target_os = "macos"), not(target_env = "ohos")))]
 impl fmt::Debug for OnClose {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("OnClose")
@@ -67,17 +69,17 @@ impl fmt::Debug for OnClose {
 }
 
 impl<R: Runtime> NotificationBuilder<R> {
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     fn new(app: AppHandle<R>) -> Self {
         Self {
             app,
             data: Default::default(),
-            #[cfg(all(desktop, unix, not(target_os = "macos")))]
+            #[cfg(all(desktop, unix, not(target_os = "macos"), not(target_env = "ohos")))]
             on_close: None,
         }
     }
 
-    #[cfg(mobile)]
+    #[cfg(any(mobile, target_env = "ohos"))]
     fn new(handle: PluginHandle<R>) -> Self {
         Self {
             handle,
@@ -201,9 +203,26 @@ impl<R: Runtime> NotificationBuilder<R> {
 
     /// Adds an extra payload to store in the notification.
     pub fn extra(mut self, key: impl Into<String>, value: impl Serialize) -> Self {
-        self.data
-            .extra
-            .insert(key.into(), serde_json::to_value(value).unwrap());
+        let key = key.into();
+        #[cfg(not(target_env = "ohos"))]
+        {
+            self.data
+                .extra
+                .insert(key, serde_json::to_value(value).unwrap());
+        }
+        #[cfg(target_env = "ohos")]
+        {
+            match serde_json::to_value(value) {
+                Ok(v) => {
+                    self.data.extra.insert(key, v);
+                }
+                Err(e) => {
+                    log::warn!(
+                        "NotificationBuilder::extra: failed to serialize value for key '{key}': {e}"
+                    );
+                }
+            }
+        }
         self
     }
 
@@ -238,7 +257,7 @@ impl<R: Runtime> NotificationBuilder<R> {
     /// ## Platform-specific
     ///
     /// - **Linux and the BSDs**: only available there.
-    #[cfg(all(desktop, unix, not(target_os = "macos")))]
+    #[cfg(all(desktop, unix, not(target_os = "macos"), not(target_env = "ohos")))]
     pub fn on_close<F: FnOnce() + Send + 'static>(mut self, handler: F) -> Self {
         self.on_close = Some(OnClose(Box::new(handler)));
         self
@@ -306,13 +325,27 @@ impl<R: Runtime, T: Manager<R>> crate::NotificationExt<R> for T {
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     let builder = Builder::new("notification");
     // On mobile the other commands are implemented by the Kotlin and Swift plugins.
-    #[cfg(mobile)]
+    #[cfg(all(mobile, not(target_env = "ohos")))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         commands::notify,
         commands::request_permission,
         commands::is_permission_granted
     ]);
-    #[cfg(desktop)]
+    #[cfg(target_env = "ohos")]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        commands::notify,
+        commands::request_permission,
+        commands::is_permission_granted,
+        ohos::cancel,
+        ohos::get_pending,
+        ohos::remove_active,
+        ohos::get_active,
+        ohos::register_action_types,
+        ohos::create_channel,
+        ohos::delete_channel,
+        ohos::list_channels,
+    ]);
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     let builder = builder
         .invoke_handler(tauri::generate_handler![
             commands::notify,
@@ -348,9 +381,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             if cfg!(windows) { "true" } else { "false" },
         ))
         .setup(|app, api| {
-            #[cfg(mobile)]
+            #[cfg(any(mobile, target_env = "ohos"))]
             let notification = mobile::init(app, api)?;
-            #[cfg(desktop)]
+            #[cfg(all(desktop, not(target_env = "ohos")))]
             let notification = desktop::init(app, api)?;
             app.manage(notification);
             Ok(())

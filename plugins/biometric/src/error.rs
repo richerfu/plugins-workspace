@@ -16,11 +16,11 @@ pub enum Error {
     /// The invocation of the underlying Android or iOS plugin failed, for example because
     /// biometric authentication was unavailable, was not enrolled, failed, or was canceled by
     /// the user.
-    #[cfg(mobile)]
+    #[cfg(any(mobile, target_env = "ohos"))]
     #[error(transparent)]
     PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),
     /// The authentication prompt failed or was canceled by the user or the system.
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     #[error("Biometric authentication failed: {message}")]
     AuthenticationFailed {
         /// A human-readable description of the failure, as reported by the operating system.
@@ -29,7 +29,7 @@ pub enum Error {
         code: Option<String>,
     },
     /// Biometric authentication cannot be used on this device.
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     #[error("Biometric unavailable: {message}")]
     Unavailable {
         /// A human-readable reason why biometric authentication is unavailable.
@@ -46,7 +46,7 @@ impl Serialize for Error {
     {
         match self {
             // Same `{ message, code }` shape the Android and iOS plugins reject with.
-            #[cfg(desktop)]
+            #[cfg(all(desktop, not(target_env = "ohos")))]
             Self::AuthenticationFailed { message, code } | Self::Unavailable { message, code } => {
                 #[derive(Serialize)]
                 struct Payload<'a> {
@@ -65,7 +65,7 @@ impl Serialize for Error {
     }
 }
 
-#[cfg(all(test, desktop))]
+#[cfg(all(test, desktop, not(target_env = "ohos")))]
 mod tests {
     use super::Error;
 
